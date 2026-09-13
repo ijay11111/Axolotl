@@ -45,7 +45,9 @@ pub struct InstallJobState {
     pub context: Option<InstallErrorContext>,
     #[serde(default)]
     pub events: Vec<InstallJobEvent>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    /// Live request state used for progress snapshots. Download resumption is
+    /// based on persisted events and filesystem state, not partial byte counts.
+    #[serde(skip)]
     pub active_downloads: HashMap<String, ActiveDownloadState>,
     #[serde(default)]
     pub display: Option<InstallJobDisplay>,
@@ -364,6 +366,7 @@ mod tests {
                     linked_dot_minecraft: None,
                     linked_version_id: None,
                     linked_version_json_path: None,
+                    linked_game_dir_mode: None,
                     game_dir_override: None,
                     created: now,
                     modified: now,
@@ -482,7 +485,7 @@ mod tests {
         assert_eq!(summary.bytes_total, Some(300));
         let items = job.download_items();
         assert_eq!(items.len(), 3);
-        assert_eq!(items[0].status, DownloadItemStatus::Completed);
+        assert_eq!(items[0].status, DownloadItemStatus::Verifying);
         assert_eq!(items[0].attempt, Some(1));
         assert_eq!(items[0].max_attempts, Some(4));
         assert_eq!(
@@ -794,6 +797,14 @@ mod tests {
         assert_eq!(summary.speed_bytes_per_second, Some(200));
         assert_eq!(summary.eta_seconds, Some(3));
 
+        job.active_downloads.get_mut("client.jar").unwrap().status =
+            DownloadItemStatus::Verifying;
+        let verifying = job.download_summary();
+        assert_eq!(verifying.speed_bytes_per_second, None);
+        assert_eq!(verifying.eta_seconds, None);
+        job.active_downloads.get_mut("client.jar").unwrap().status =
+            DownloadItemStatus::Downloading;
+
         job.active_downloads
             .get_mut("client.jar")
             .unwrap()
@@ -805,6 +816,36 @@ mod tests {
             phase: InstallPhaseId::DownloadingMinecraft,
         });
         assert!(job.active_downloads.is_empty());
+    }
+
+    #[test]
+    fn active_downloads_are_not_persisted() {
+        let mut job = job_state();
+        job.active_downloads.insert(
+            "client.jar".to_string(),
+            ActiveDownloadState {
+                name: "client.jar".to_string(),
+                url: "https://piston-data.mojang.com/client.jar".to_string(),
+                source: "official".to_string(),
+                bytes_downloaded: 400,
+                bytes_total: Some(1_000),
+                attempt: 1,
+                max_attempts: 3,
+                status: DownloadItemStatus::Downloading,
+                last_reported_bytes: 400,
+                last_progress_at: Utc::now(),
+                speed_bytes_per_second: Some(200),
+                speed_sample_started_at: Utc::now(),
+                speed_sample_started_bytes: 400,
+            },
+        );
+
+        let serialized = serde_json::to_value(&job).unwrap();
+        assert!(serialized.get("active_downloads").is_none());
+
+        let restored: InstallJobState =
+            serde_json::from_value(serialized).unwrap();
+        assert!(restored.active_downloads.is_empty());
     }
 
     #[test]
@@ -1476,9 +1517,38 @@ pub enum InstallRequest {
         #[serde(default)]
         display_icon: Option<String>,
     },
+    InstallContentBatch {
+        instance_id: String,
+        items: Vec<InstallContentBatchItem>,
+        display_title: String,
+        #[serde(default)]
+        display_icon: Option<String>,
+    },
     DownloadJava {
         vendor: String,
         version: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InstallContentBatchItem {
+    Modrinth {
+        project_id: String,
+        version_id: Option<String>,
+        content_type: ContentType,
+        #[serde(default)]
+        selected: ResolutionPreferences,
+        #[serde(default)]
+        excluded_project_ids: Vec<String>,
+        #[serde(default)]
+        force_project_ids: Vec<String>,
+    },
+    CurseForge {
+        request: CurseForgeInstallRequest,
+    },
+    CurseForgeWorld {
+        request: CurseForgeWorldInstallRequest,
     },
 }
 
@@ -1508,6 +1578,7 @@ impl InstallRequest {
             Self::InstallContent { .. }
             | Self::InstallCurseForgeContent { .. }
             | Self::InstallCurseForgeWorld { .. }
+            | Self::InstallContentBatch { .. }
             | Self::DownloadJava { .. } => false,
         }
     }
@@ -1539,6 +1610,7 @@ impl InstallRequest {
             Self::InstallCurseForgeWorld { .. } => {
                 InstallJobKind::InstallContent
             }
+            Self::InstallContentBatch { .. } => InstallJobKind::InstallContent,
             Self::DownloadJava { .. } => InstallJobKind::DownloadJava,
         }
     }
@@ -1575,6 +1647,11 @@ impl InstallRequest {
                     instance_id: request.instance_id.clone(),
                 }
             }
+            Self::InstallContentBatch { instance_id, .. } => {
+                InstallTarget::ExistingInstance {
+                    instance_id: instance_id.clone(),
+                }
+            }
             _ => InstallTarget::NewInstance { instance_id: None },
         }
     }
@@ -1605,6 +1682,7 @@ impl InstallRequest {
             Self::InstallContent { .. } => InstallCleanup::None,
             Self::InstallCurseForgeContent { .. } => InstallCleanup::None,
             Self::InstallCurseForgeWorld { .. } => InstallCleanup::None,
+            Self::InstallContentBatch { .. } => InstallCleanup::None,
             _ => InstallCleanup::DeleteNewInstance { instance_id: None },
         }
     }
@@ -1652,9 +1730,15 @@ impl InstallJobProvider {
 #[serde(rename_all = "snake_case")]
 pub enum DownloadItemStatus {
     Queued,
+    WorkerStarted,
+    WaitingForResource,
+    Connecting,
     Downloading,
     Verifying,
     Writing,
+    Metadata,
+    WaitingForDatabase,
+    Finalizing,
     WaitingForUser,
     Completed,
     Skipped,
@@ -2369,6 +2453,23 @@ impl InstallJobState {
             InstallRequest::InstallContent { .. } => {
                 InstallJobProvider::Modrinth
             }
+            InstallRequest::InstallContentBatch { items, .. } => {
+                if items.iter().all(|item| {
+                    matches!(item, InstallContentBatchItem::Modrinth { .. })
+                }) {
+                    InstallJobProvider::Modrinth
+                } else if items.iter().all(|item| {
+                    matches!(
+                        item,
+                        InstallContentBatchItem::CurseForge { .. }
+                            | InstallContentBatchItem::CurseForgeWorld { .. }
+                    )
+                }) {
+                    InstallJobProvider::CurseForge
+                } else {
+                    InstallJobProvider::Application
+                }
+            }
             InstallRequest::InstallCurseForgeContent { .. }
             | InstallRequest::InstallCurseForgeWorld { .. }
             | InstallRequest::UpdateManagedCurseForgeModpack { .. } => {
@@ -2555,7 +2656,10 @@ impl InstallJobState {
                         .get(path)
                         .and_then(|&index| items.get_mut(index))
                     {
-                        item.status = DownloadItemStatus::Completed;
+                        // Network transfer completion is not content
+                        // finalization. `ContentFileCompleted` is the event
+                        // that confirms verification and DB registration.
+                        item.status = DownloadItemStatus::Verifying;
                         item.bytes_downloaded = *bytes;
                         item.bytes_total = item.bytes_total.or(Some(*bytes));
                     }
@@ -2674,9 +2778,15 @@ impl InstallJobState {
                         if matches!(
                             item.status,
                             DownloadItemStatus::Queued
+                                | DownloadItemStatus::WorkerStarted
+                                | DownloadItemStatus::WaitingForResource
+                                | DownloadItemStatus::Connecting
                                 | DownloadItemStatus::Downloading
                                 | DownloadItemStatus::Verifying
                                 | DownloadItemStatus::Writing
+                                | DownloadItemStatus::Metadata
+                                | DownloadItemStatus::WaitingForDatabase
+                                | DownloadItemStatus::Finalizing
                         ) {
                             item.status = DownloadItemStatus::Canceled;
                         }
@@ -2867,14 +2977,16 @@ impl InstallJobState {
                 ..
             }
         );
+        let now = Utc::now();
         let active_speed = self
             .active_downloads
             .values()
             .filter(|download| {
-                Utc::now()
-                    .signed_duration_since(download.last_progress_at)
-                    .num_milliseconds()
-                    < 3_000
+                download.status == DownloadItemStatus::Downloading
+                    && now
+                        .signed_duration_since(download.last_progress_at)
+                        .num_milliseconds()
+                        < 3_000
             })
             .filter_map(|download| download.speed_bytes_per_second)
             .fold(0_u64, u64::saturating_add);

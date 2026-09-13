@@ -15,6 +15,7 @@ export type GameInstance = {
 	linked_dot_minecraft?: string | null
 	linked_version_id?: string | null
 	linked_version_json_path?: string | null
+	linked_game_dir_mode?: 'automatic' | 'isolated' | 'shared' | null
 
 	game_version: string
 	protocol_version?: number
@@ -41,17 +42,14 @@ export type GameInstance = {
 
 	memory?: MemorySettings
 	force_fullscreen?: boolean
+	maximize_window?: boolean
 	game_resolution?: [number, number]
 	launch_preparation_timeout?: number | null
 	hooks: Hooks
 }
 
 type InstallStage =
-	| 'installed'
-	| 'minecraft_installing'
-	| 'pack_installed'
-	| 'pack_installing'
-	| 'not_installed'
+	'installed' | 'minecraft_installing' | 'pack_installed' | 'pack_installing' | 'not_installed'
 
 type InstanceLinkIdentity = {
 	project_id?: ModrinthId | null
@@ -196,7 +194,7 @@ type AppSettings = {
 	max_concurrent_writes: number
 
 	theme: 'dark' | 'light' | 'oled' | 'system'
-	accent_color: 'pink' | 'orange' | 'green' | 'blue' | 'purple' | `custom:#${string}`
+	accent_color: 'pink' | 'orange' | 'green' | 'blue' | 'purple' | 'system' | `custom:#${string}`
 	default_page: 'Home' | 'DiscoverContent' | 'Library'
 	collapsed_navigation: boolean
 	advanced_rendering: boolean
@@ -226,6 +224,7 @@ type AppSettings = {
 	custom_env_vars: [string, string][]
 	memory: MemorySettings
 	force_fullscreen: boolean
+	maximize_window: boolean
 	game_resolution: [number, number]
 	hide_on_process_start: boolean
 	enter_lightweight_mode_on_game_launch: boolean

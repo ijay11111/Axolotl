@@ -16,11 +16,13 @@ import {
 	type ContentItem,
 	defineMessages,
 	DropdownSelect,
+	MinecraftFormattedText,
 	NewModal,
 	StyledInput,
 	Toggle,
 	useVIntl,
 } from '@modrinth/ui'
+import { autoCleanToText } from '@sfirew/minecraft-motd-parser'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -136,15 +138,7 @@ const messages = defineMessages({
 
 type ViewMode = 'tree' | 'graph'
 type Filter =
-	| 'all'
-	| 'pack'
-	| 'user'
-	| 'local'
-	| 'disabled'
-	| 'missing'
-	| 'orphaned'
-	| 'cycle'
-	| 'unresolved'
+	'all' | 'pack' | 'user' | 'local' | 'disabled' | 'missing' | 'orphaned' | 'cycle' | 'unresolved'
 type Point = { x: number; y: number }
 
 const minZoom = 0.32
@@ -778,14 +772,15 @@ defineExpose({ show, hide, setItems })
 								<template v-if="row.nodeId && graph.nodeById.get(row.nodeId)">
 									<Avatar
 										:src="graph.nodeById.get(row.nodeId)?.iconUrl"
-										:alt="graph.nodeById.get(row.nodeId)?.title"
+										:alt="autoCleanToText(graph.nodeById.get(row.nodeId)?.title ?? '')"
 										size="2.5rem"
 										no-shadow
 									/>
 									<div class="min-w-0 flex-1">
-										<div class="truncate font-semibold text-contrast">
-											{{ graph.nodeById.get(row.nodeId)?.title }}
-										</div>
+										<MinecraftFormattedText
+											:text="graph.nodeById.get(row.nodeId)?.title ?? ''"
+											class="block truncate font-semibold text-contrast"
+										/>
 										<div class="mt-0.5 truncate text-xs text-secondary">
 											{{
 												graph.nodeById.get(row.nodeId)?.versionNumber ??
@@ -946,9 +941,17 @@ defineExpose({ show, hide, setItems })
 										@click.stop="selectNode(node.id)"
 									>
 										<span class="dependency-graph-port dependency-graph-port-input" />
-										<Avatar :src="node.iconUrl" :alt="node.title" size="2.75rem" no-shadow />
+										<Avatar
+											:src="node.iconUrl"
+											:alt="autoCleanToText(node.title)"
+											size="2.75rem"
+											no-shadow
+										/>
 										<div class="min-w-0 flex-1">
-											<div class="truncate text-sm font-bold text-contrast">{{ node.title }}</div>
+											<MinecraftFormattedText
+												:text="node.title"
+												class="block truncate text-sm font-bold text-contrast"
+											/>
 											<div class="mt-0.5 truncate text-xs text-secondary">
 												{{ statusLabel(node) ?? sourceLabel(node) }}
 											</div>
@@ -975,8 +978,13 @@ defineExpose({ show, hide, setItems })
 										class="flex max-w-52 items-center gap-2 rounded-lg border border-solid border-surface-4 bg-surface-1 px-2 py-1.5 text-left text-xs text-secondary transition-colors hover:border-brand hover:text-contrast"
 										@click="selectNode(node.id)"
 									>
-										<Avatar :src="node.iconUrl" :alt="node.title" size="1.5rem" no-shadow />
-										<span class="truncate">{{ node.title }}</span>
+										<Avatar
+											:src="node.iconUrl"
+											:alt="autoCleanToText(node.title)"
+											size="1.5rem"
+											no-shadow
+										/>
+										<MinecraftFormattedText :text="node.title" class="truncate" />
 									</button>
 								</div>
 							</div>
@@ -989,18 +997,25 @@ defineExpose({ show, hide, setItems })
 					class="flex min-h-0 w-full shrink-0 flex-col gap-4 overflow-y-auto border-0 border-t border-solid border-surface-4 bg-surface-1 p-5 lg:w-[310px] lg:border-l lg:border-t-0"
 				>
 					<div class="flex items-center gap-3">
-						<Avatar :src="selectedNode.iconUrl" :alt="selectedNode.title" size="3rem" no-shadow />
+						<Avatar
+							:src="selectedNode.iconUrl"
+							:alt="autoCleanToText(selectedNode.title)"
+							size="3rem"
+							no-shadow
+						/>
 						<div class="min-w-0">
 							<RouterLink
 								v-if="nodeLink(selectedNode)"
 								:to="{ path: nodeLink(selectedNode), query: nodeLinkQuery() }"
 								class="block truncate font-semibold text-contrast hover:underline"
 							>
-								{{ selectedNode.title }}
+								<MinecraftFormattedText :text="selectedNode.title" />
 							</RouterLink>
-							<span v-else class="block truncate font-semibold text-contrast">{{
-								selectedNode.title
-							}}</span>
+							<MinecraftFormattedText
+								v-else
+								:text="selectedNode.title"
+								class="block truncate font-semibold text-contrast"
+							/>
 							<span class="text-sm text-secondary">{{ sourceLabel(selectedNode) }}</span>
 						</div>
 					</div>
@@ -1029,7 +1044,7 @@ defineExpose({ show, hide, setItems })
 							class="truncate text-left text-sm text-brand hover:underline"
 							@click="selectNode(edge.target)"
 						>
-							{{ graph.nodeById.get(edge.target)?.title }}
+							<MinecraftFormattedText :text="graph.nodeById.get(edge.target)?.title ?? ''" />
 						</button>
 						<span
 							v-if="!graph.edgesBySource.get(selectedNode.id)?.length"
@@ -1048,7 +1063,7 @@ defineExpose({ show, hide, setItems })
 							class="truncate text-left text-sm text-brand hover:underline"
 							@click="selectNode(edge.source)"
 						>
-							{{ graph.nodeById.get(edge.source)?.title }}
+							<MinecraftFormattedText :text="graph.nodeById.get(edge.source)?.title ?? ''" />
 						</button>
 						<span
 							v-if="!graph.edgesByTarget.get(selectedNode.id)?.length"

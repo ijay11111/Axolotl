@@ -20,12 +20,17 @@ use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::Notify;
 use tokio_rustls::TlsConnector;
 
 use crate::util::fetch::DownloadRoute;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const DNS_PREWARM_TIMEOUT: Duration = Duration::from_secs(10);
+const STREAM_READY_TIMEOUT: Duration = Duration::from_secs(30);
+const IDLE_EVICTION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const CONNECTION_WAIT_TIMEOUT: Duration = Duration::from_secs(45);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum H2ConnectFailureKind {
@@ -67,6 +72,8 @@ pub struct SharedH2Connection {
     /// This is deliberately separate from HTTP/2's peer stream accounting: it
     /// lets an asset batch distribute work across sibling TCP connections.
     active_streams: Arc<AtomicUsize>,
+    last_activity: Mutex<std::time::Instant>,
+    evict: Arc<Notify>,
 }
 
 pub(crate) struct H2StreamActivity {
@@ -91,6 +98,8 @@ impl SharedH2Connection {
             physical_budget: Mutex::new(physical_budget),
             dead: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             active_streams: Arc::new(AtomicUsize::new(0)),
+            last_activity: Mutex::new(std::time::Instant::now()),
+            evict: Arc::new(Notify::new()),
         }
     }
 
@@ -108,10 +117,38 @@ impl SharedH2Connection {
     }
 
     pub(crate) fn track_stream(&self) -> H2StreamActivity {
+        *self
+            .last_activity
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            std::time::Instant::now();
         self.active_streams.fetch_add(1, Ordering::AcqRel);
         H2StreamActivity {
             active_streams: Arc::clone(&self.active_streams),
         }
+    }
+
+    #[cfg(test)]
+    fn mark_idle_for_test(&self) {
+        *self
+            .last_activity
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            std::time::Instant::now() - IDLE_EVICTION_TIMEOUT;
+    }
+
+    fn is_idle_expired(&self) -> bool {
+        self.active_streams() == 0
+            && self
+                .last_activity
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .elapsed()
+                >= IDLE_EVICTION_TIMEOUT
+    }
+
+    fn evict(&self) {
+        self.evict.notify_waiters();
     }
 
     fn has_physical_budget(&self) -> bool {
@@ -141,7 +178,17 @@ impl SharedH2Connection {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
-        let mut sender = sender.ready().await?;
+        *self
+            .last_activity
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            std::time::Instant::now();
+        let mut sender =
+            tokio::time::timeout(STREAM_READY_TIMEOUT, sender.ready())
+                .await
+                .map_err(|_| {
+                    h2::Error::from(h2::Reason::ENHANCE_YOUR_CALM)
+                })??;
         let ready_wait = ready_started.elapsed();
         if ready_wait >= Duration::from_millis(25) {
             tracing::debug!(
@@ -151,7 +198,9 @@ impl SharedH2Connection {
             );
         }
         let (response, _) = sender.send_request(request, true)?;
-        response.await
+        tokio::time::timeout(STREAM_READY_TIMEOUT, response)
+            .await
+            .map_err(|_| h2::Error::from(h2::Reason::ENHANCE_YOUR_CALM))?
     }
 }
 
@@ -268,7 +317,11 @@ async fn connect_tcp(host: &str, port: u16) -> std::io::Result<TcpStream> {
             Err(error) => last_error = Some(error),
         }
         if resolver.record_connection_failure(host) {
-            resolver.pre_resolve(host).await;
+            let _ = tokio::time::timeout(
+                CONNECTION_WAIT_TIMEOUT,
+                resolver.pre_resolve(host),
+            )
+            .await;
             let refreshed = resolver.resolved_addresses(host);
             if !refreshed.is_empty() && refreshed != addresses {
                 match connect_addresses(host, port, &refreshed).await {
@@ -332,9 +385,11 @@ async fn establish(
 
     // Pre-resolve so `connect_tcp` gets the ordered, reliability-ranked
     // address list shared with the legacy reqwest path.
-    crate::util::fetch::DOWNLOAD_DNS_RESOLVER
-        .pre_resolve(host)
-        .await;
+    let _ = tokio::time::timeout(
+        DNS_PREWARM_TIMEOUT,
+        crate::util::fetch::DOWNLOAD_DNS_RESOLVER.pre_resolve(host),
+    )
+    .await;
 
     let tcp = connect_tcp(host, port).await.map_err(|error| {
 		H2ConnectError::new(
@@ -400,9 +455,15 @@ async fn establish(
 
     let dead = Arc::clone(&shared.dead);
     let connection_budget = Arc::clone(&shared);
+    let evict = Arc::clone(&shared.evict);
     let authority = authority.to_string();
     tokio::spawn(async move {
-        let _ = connection.await;
+        tokio::select! {
+            _ = connection => {}
+            _ = evict.notified() => {
+                tracing::debug!(authority, "Evicting idle shared HTTP/2 connection");
+            }
+        }
         dead.store(true, std::sync::atomic::Ordering::Release);
         connection_budget.release_physical_budget();
         tracing::debug!(authority, "Shared HTTP/2 connection closed");
@@ -426,10 +487,19 @@ pub(crate) async fn shared_connection(
             )
         })?;
     let slot = connection_slot(&authority).await;
-    let mut cached = slot.lock().await;
-    if let Some(connection) =
-        cached.as_ref().filter(|connection| !connection.is_dead())
-    {
+    let mut cached = tokio::time::timeout(CONNECTION_WAIT_TIMEOUT, slot.lock())
+        .await
+        .map_err(|_| {
+            H2ConnectError::new(
+                H2ConnectFailureKind::Protocol,
+                format!(
+                    "timed out waiting for HTTP/2 connection slot {authority}"
+                ),
+            )
+        })?;
+    if let Some(connection) = cached.as_ref().filter(|connection| {
+        !connection.is_dead() && !connection.is_idle_expired()
+    }) {
         if !reserve_native_budget || connection.has_physical_budget() {
             tracing::debug!(authority, "Reusing shared HTTP/2 connection");
             return Ok(Arc::clone(connection));
@@ -440,6 +510,14 @@ pub(crate) async fn shared_connection(
                 .to_string(),
         ));
     }
+    if cached.as_ref().is_some_and(|connection| {
+        connection.is_dead() || connection.is_idle_expired()
+    }) {
+        if let Some(connection) = cached.as_ref() {
+            connection.evict();
+        }
+        *cached = None;
+    }
     if !allow_cold_connection {
         return Err(H2ConnectError::new(
             H2ConnectFailureKind::Protocol,
@@ -447,7 +525,17 @@ pub(crate) async fn shared_connection(
         ));
     }
     tracing::debug!(authority, "Establishing cold shared HTTP/2 connection");
-    let connection = establish(route, reserve_native_budget).await?;
+    let connection = tokio::time::timeout(
+        CONNECTION_WAIT_TIMEOUT,
+        establish(route, reserve_native_budget),
+    )
+    .await
+    .map_err(|_| {
+        H2ConnectError::new(
+            H2ConnectFailureKind::Tcp,
+            format!("timed out establishing HTTP/2 connection to {authority}"),
+        )
+    })??;
     *cached = Some(Arc::clone(&connection));
     Ok(connection)
 }
@@ -467,10 +555,20 @@ pub(crate) async fn shared_batch_connection(
             )
         })?;
     let slot = batch_connection_slot(&authority).await;
-    let mut cached = slot.lock().await;
-    if let Some(connection) =
-        cached.as_ref().filter(|connection| !connection.is_dead())
-    {
+    let mut cached = tokio::time::timeout(
+        CONNECTION_WAIT_TIMEOUT,
+        slot.lock(),
+    )
+    .await
+    .map_err(|_| {
+        H2ConnectError::new(
+            H2ConnectFailureKind::Protocol,
+            format!("timed out waiting for asset HTTP/2 connection slot {authority}"),
+        )
+    })?;
+    if let Some(connection) = cached.as_ref().filter(|connection| {
+        !connection.is_dead() && !connection.is_idle_expired()
+    }) {
         if !reserve_native_budget || connection.has_physical_budget() {
             tracing::debug!(
                 authority,
@@ -484,8 +582,28 @@ pub(crate) async fn shared_batch_connection(
                 .to_string(),
         ));
     }
+    if cached.as_ref().is_some_and(|connection| {
+        connection.is_dead() || connection.is_idle_expired()
+    }) {
+        if let Some(connection) = cached.as_ref() {
+            connection.evict();
+        }
+        *cached = None;
+    }
     tracing::debug!(authority, "Establishing sibling HTTP/2 asset connection");
-    let connection = establish(route, reserve_native_budget).await?;
+    let connection = tokio::time::timeout(
+        CONNECTION_WAIT_TIMEOUT,
+        establish(route, reserve_native_budget),
+    )
+    .await
+    .map_err(|_| {
+        H2ConnectError::new(
+            H2ConnectFailureKind::Tcp,
+            format!(
+                "timed out establishing asset HTTP/2 connection to {authority}"
+            ),
+        )
+    })??;
     *cached = Some(Arc::clone(&connection));
     Ok(connection)
 }

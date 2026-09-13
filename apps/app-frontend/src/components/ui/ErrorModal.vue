@@ -94,6 +94,18 @@ const messages = defineMessages({
 		defaultMessage: 'first. When that is complete, return here and sign in.',
 	},
 	tryAgain: { id: 'app.error.try-sign-in-again', defaultMessage: 'Try signing in again' },
+	loginTrouble: {
+		id: 'minecraft-login.trouble',
+		defaultMessage: 'Having trouble?',
+	},
+	loginBrowser: {
+		id: 'minecraft-login.browser',
+		defaultMessage: 'Use browser login',
+	},
+	loginDeviceCode: {
+		id: 'minecraft-login.device-code',
+		defaultMessage: 'Use device code',
+	},
 	permissionsTitle: {
 		id: 'app.error.permissions-title',
 		defaultMessage: 'Change directory permissions',
@@ -143,6 +155,24 @@ const messages = defineMessages({
 	stateFixRedownload: {
 		id: 'app.error.state-fix-redownload',
 		defaultMessage: 'Download and install the app again.',
+	},
+	stateDatabaseNewerDescription: {
+		id: 'app.error.state-database-newer-description',
+		defaultMessage:
+			'The database was last opened by a newer version of Axolotl, which upgraded it to a format this version cannot read. Your instances and settings are still there.',
+	},
+	stateDatabaseNewerFixIntro: {
+		id: 'app.error.state-database-newer-fix-intro',
+		defaultMessage: 'To start the launcher again, either:',
+	},
+	stateDatabaseNewerFixUpdate: {
+		id: 'app.error.state-database-newer-fix-update',
+		defaultMessage: 'Reinstall the newer version of Axolotl - it opens this database as it is.',
+	},
+	stateDatabaseNewerFixDowngrade: {
+		id: 'app.error.state-database-newer-fix-downgrade',
+		defaultMessage:
+			'If you are trying out a build rather than using the launcher normally, revert the database with scripts/axolotl/downgrade-app-db.mjs instead.',
 	},
 	loaderDescription: {
 		id: 'app.error.loader-description',
@@ -215,6 +245,13 @@ defineExpose({
 			errorType.value = 'no_loader_version'
 			supportLink.value = AxolotlBrandConfig.supportUrl
 			metadata.value.instanceId = context.instanceId
+		} else if (
+			errorVal.message &&
+			errorVal.message.includes('was created by a newer Axolotl build')
+		) {
+			title.value = formatMessage(messages.stateTitle)
+			errorType.value = 'state_db_newer'
+			supportLink.value = AxolotlBrandConfig.supportUrl
 		} else if (source === 'state_init') {
 			title.value = formatMessage(messages.stateTitle)
 			errorType.value = 'state_init'
@@ -235,7 +272,11 @@ const loadingMinecraft = ref(false)
 async function loginMinecraft() {
 	try {
 		loadingMinecraft.value = true
-		const loggedIn = await login_flow()
+		const loggedIn = await login_flow({
+			trouble: formatMessage(messages.loginTrouble),
+			browserLogin: formatMessage(messages.loginBrowser),
+			deviceCode: formatMessage(messages.loginDeviceCode),
+		})
 
 		if (loggedIn) {
 			await set_default_user(loggedIn.profile.id).catch(handleError)
@@ -280,6 +321,7 @@ const hasDebugInfo = computed(
 		errorType.value === 'directory_move' ||
 		errorType.value === 'minecraft_auth' ||
 		errorType.value === 'state_init' ||
+		errorType.value === 'state_db_newer' ||
 		errorType.value === 'no_loader_version',
 )
 
@@ -397,6 +439,16 @@ async function exportLogs() {
 						</button>
 					</div>
 				</div>
+				<template v-else-if="errorType === 'state_db_newer'">
+					<p>
+						{{ formatMessage(messages.stateDatabaseNewerDescription) }}
+					</p>
+					<p>{{ formatMessage(messages.stateDatabaseNewerFixIntro) }}</p>
+					<ul>
+						<li>{{ formatMessage(messages.stateDatabaseNewerFixUpdate) }}</li>
+						<li>{{ formatMessage(messages.stateDatabaseNewerFixDowngrade) }}</li>
+					</ul>
+				</template>
 				<template v-else-if="errorType === 'state_init'">
 					<p>
 						{{ formatMessage(messages.stateDescription) }}

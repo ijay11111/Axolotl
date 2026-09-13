@@ -211,6 +211,15 @@ pub struct JavaDiscoveryPayload {
 
 #[derive(Serialize, Clone)]
 #[cfg(feature = "tauri")]
+#[serde(rename_all = "snake_case")]
+pub struct LogShareAiEventPayload {
+    pub instance_id: String,
+    pub event_type: String,
+    pub data: serde_json::Value,
+}
+
+#[derive(Serialize, Clone)]
+#[cfg(feature = "tauri")]
 #[serde(rename_all = "camelCase")]
 pub struct JavaDownloadConfirmationPayload {
     pub request_id: Uuid,
@@ -269,6 +278,10 @@ pub enum CommandPayload {
 pub struct ProcessPayload {
     pub instance_id: String,
     pub uuid: Uuid,
+    pub pid: u32,
+    pub maximize_window: bool,
+    #[serde(default)]
+    pub launch_preparation_timeout: Option<u64>,
     pub event: ProcessPayloadType,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -305,6 +318,9 @@ pub enum ExitReason {
 pub enum ServerPayloadType {
     Log {
         line: String,
+    },
+    ConsoleOutput {
+        data: String,
     },
     DownloadProgress {
         downloaded: u64,

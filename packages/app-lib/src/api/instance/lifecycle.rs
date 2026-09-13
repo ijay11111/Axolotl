@@ -7,7 +7,6 @@ use crate::state::{
 };
 use crate::util::{fetch::write_cached_icon, io};
 use std::path::Path;
-use std::path::PathBuf;
 
 #[tracing::instrument]
 #[allow(clippy::too_many_arguments)]
@@ -93,7 +92,7 @@ pub async fn create_with_direct_link(
 
 /// Reconcile configured external Minecraft roots with direct-link records.
 pub async fn sync_direct_links(
-    roots: Vec<PathBuf>,
+    roots: Vec<crate::state::ExternalMinecraftRoot>,
 ) -> crate::Result<crate::state::DirectLinkSyncReport> {
     let state = State::get().await?;
     crate::state::sync_direct_link_instances(roots, &state).await

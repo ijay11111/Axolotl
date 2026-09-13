@@ -143,6 +143,8 @@ pub struct Settings {
     pub sidebar_instance_count: u32,
     #[serde(default)]
     pub close_behavior: String,
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
     #[serde(default)]
     pub auto_hide_downloads_button: bool,
     #[serde(default)]
@@ -169,6 +171,7 @@ pub struct Settings {
     pub custom_env_vars: Vec<(String, String)>,
     pub memory: MemorySettings,
     pub force_fullscreen: bool,
+    pub maximize_window: bool,
     pub game_resolution: WindowSize,
     pub hide_on_process_start: bool,
     pub enter_lightweight_mode_on_game_launch: bool,
@@ -198,6 +201,12 @@ pub struct PrivacySettings {
 
 fn default_true() -> bool {
     true
+}
+
+/// Default log level, kept in sync with the `log_level` column default and
+/// the logger's own fallback.
+fn default_log_level() -> String {
+    crate::logger::DEFAULT_LOG_LEVEL.to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, Hash, PartialEq)]
@@ -240,7 +249,7 @@ impl Settings {
 				discord_rpc, developer_mode, telemetry, telemetry_consent_version, personalized_ads,
                 onboarded, onboarding_version, onboarding_instance_tour_completed,
                 json(extra_launch_args) extra_launch_args, json(custom_env_vars) custom_env_vars,
-                mc_memory_max, mc_memory_auto, mc_force_fullscreen, mc_game_resolution_x, mc_game_resolution_y, hide_on_process_start, enter_lightweight_mode_on_game_launch,
+                mc_memory_max, mc_memory_auto, mc_force_fullscreen, mc_maximize_window, mc_game_resolution_x, mc_game_resolution_y, hide_on_process_start, enter_lightweight_mode_on_game_launch,
                 auto_set_java_high_performance_mode,
                 hook_pre_launch, hook_wrapper, hook_post_exit,
                 custom_dir, prev_custom_dir, migrated, json(feature_flags) feature_flags, toggle_sidebar,
@@ -262,6 +271,11 @@ impl Settings {
         )
         .fetch_one(exec)
         .await?;
+
+        let log_level: String =
+            sqlx::query_scalar("SELECT log_level FROM settings WHERE id = 0")
+                .fetch_one(exec)
+                .await?;
 
         let engine_row =
             sqlx::query("SELECT download_engine FROM settings WHERE id = 0")
@@ -317,6 +331,7 @@ impl Settings {
             transparent_background_blur: res.transparent_background_blur == 1,
             sidebar_instance_count: res.sidebar_instance_count as u32,
             close_behavior,
+            log_level,
             auto_hide_downloads_button: res.auto_hide_downloads_button == 1,
             home_layout: HomeLayout::from_string(&res.home_layout),
             minimal_home_instance_id: res.minimal_home_instance_id,
@@ -359,6 +374,7 @@ impl Settings {
                 .await?,
             },
             force_fullscreen: res.mc_force_fullscreen == 1,
+            maximize_window: res.mc_maximize_window == 1,
             game_resolution: WindowSize(
                 res.mc_game_resolution_x as u16,
                 res.mc_game_resolution_y as u16,
@@ -461,54 +477,55 @@ impl Settings {
                 custom_env_vars = jsonb($15),
                 mc_memory_max = $16,
                 mc_memory_auto = $17,
-                mc_force_fullscreen = $18,
-                mc_game_resolution_x = $19,
-                mc_game_resolution_y = $20,
-                hide_on_process_start = $21,
-                auto_set_java_high_performance_mode = $22,
+                 mc_force_fullscreen = $18,
+                 mc_maximize_window = $19,
+                 mc_game_resolution_x = $20,
+                 mc_game_resolution_y = $21,
+                 hide_on_process_start = $22,
+                 auto_set_java_high_performance_mode = $23,
 
-                hook_pre_launch = $23,
-                hook_wrapper = $24,
-                hook_post_exit = $25,
+                 hook_pre_launch = $24,
+                 hook_wrapper = $25,
+                 hook_post_exit = $26,
 
-                custom_dir = $26,
-                prev_custom_dir = $27,
-                migrated = $28,
+                 custom_dir = $27,
+                 prev_custom_dir = $28,
+                 migrated = $29,
 
-                toggle_sidebar = $29,
-                feature_flags = $30,
-                hide_nametag_skins_page = $31,
+                 toggle_sidebar = $30,
+                 feature_flags = $31,
+                 hide_nametag_skins_page = $32,
 
-                skipped_update = $32,
-                pending_update_toast_for_version = $33,
-                auto_download_updates = $34,
-                accent_color = $35,
-                custom_background_path = $36,
-                custom_background_blur = $37,
-                custom_background_opacity = $38,
+                 skipped_update = $33,
+                 pending_update_toast_for_version = $34,
+                 auto_download_updates = $35,
+                 accent_color = $36,
+                 custom_background_path = $37,
+                 custom_background_blur = $38,
+                 custom_background_opacity = $39,
 
-                version = $39,
-                auto_concurrent_downloads = $40,
-                minecraft_metadata_source = $41,
-                minecraft_file_source = $42,
-                modrinth_source = $43,
-                curseforge_source = $44,
-                use_minecraft_mirror = $45,
-                use_modrinth_mirror = $46,
-                use_curseforge_mirror = $47,
-                onboarding_version = $48,
-                onboarding_instance_tour_completed = $49,
-                sidebar_instance_count = $50,
-                transparent_background = $51,
-                transparent_background_opacity = $52,
-                transparent_background_blur = $53,
-                home_layout = $54,
-                minimal_home_instance_id = $55,
-                auto_hide_downloads_button = $56,
-                home_widgets = jsonb($57),
-                mojang_auth_source = $58,
-				terracotta_public_nodes = jsonb($59),
-				telemetry_consent_version = $60
+                 version = $40,
+                 auto_concurrent_downloads = $41,
+                 minecraft_metadata_source = $42,
+                 minecraft_file_source = $43,
+                 modrinth_source = $44,
+                 curseforge_source = $45,
+                 use_minecraft_mirror = $46,
+                 use_modrinth_mirror = $47,
+                 use_curseforge_mirror = $48,
+                 onboarding_version = $49,
+                 onboarding_instance_tour_completed = $50,
+                 sidebar_instance_count = $51,
+                 transparent_background = $52,
+                 transparent_background_opacity = $53,
+                 transparent_background_blur = $54,
+                 home_layout = $55,
+                 minimal_home_instance_id = $56,
+                 auto_hide_downloads_button = $57,
+                 home_widgets = jsonb($58),
+                 mojang_auth_source = $59,
+				terracotta_public_nodes = jsonb($60),
+				telemetry_consent_version = $61
             ",
             max_concurrent_writes,
             max_concurrent_downloads,
@@ -528,6 +545,7 @@ impl Settings {
             self.memory.maximum,
             self.memory.automatic,
             self.force_fullscreen,
+            self.maximize_window,
             self.game_resolution.0,
             self.game_resolution.1,
             self.hide_on_process_start,
@@ -583,6 +601,11 @@ impl Settings {
 
         sqlx::query("UPDATE settings SET close_behavior = ? WHERE id = 0")
             .bind(&self.close_behavior)
+            .execute(exec)
+            .await?;
+
+        sqlx::query("UPDATE settings SET log_level = ? WHERE id = 0")
+            .bind(&self.log_level)
             .execute(exec)
             .await?;
 
@@ -775,6 +798,7 @@ pub enum AccentColor {
     Green,
     Blue,
     Purple,
+    System,
     Custom(String),
 }
 
@@ -786,6 +810,7 @@ impl AccentColor {
             AccentColor::Green => "green",
             AccentColor::Blue => "blue",
             AccentColor::Purple => "purple",
+            AccentColor::System => "system",
             AccentColor::Custom(value) => {
                 if Self::is_valid_custom(value) {
                     value
@@ -802,6 +827,7 @@ impl AccentColor {
             "green" => AccentColor::Green,
             "blue" => AccentColor::Blue,
             "purple" => AccentColor::Purple,
+            "system" => AccentColor::System,
             other => match Self::parse_custom(other) {
                 Some(custom) => custom,
                 None => AccentColor::Pink,
@@ -956,6 +982,7 @@ mod tests {
         assert_eq!(AccentColor::from_string("green"), AccentColor::Green);
         assert_eq!(AccentColor::from_string("blue"), AccentColor::Blue);
         assert_eq!(AccentColor::from_string("purple"), AccentColor::Purple);
+        assert_eq!(AccentColor::from_string("system"), AccentColor::System);
     }
 
     #[test]
@@ -988,6 +1015,10 @@ mod tests {
             "\"blue\""
         );
         assert_eq!(
+            serde_json::to_string(&AccentColor::System).unwrap(),
+            "\"system\""
+        );
+        assert_eq!(
             serde_json::to_string(&custom).unwrap(),
             "\"custom:#db2777\""
         );
@@ -1007,6 +1038,8 @@ mod tests {
         assert_eq!(color, AccentColor::Custom("custom:#1bd96a".to_owned()));
         let preset: AccentColor = serde_json::from_str("\"purple\"").unwrap();
         assert_eq!(preset, AccentColor::Purple);
+        let system: AccentColor = serde_json::from_str("\"system\"").unwrap();
+        assert_eq!(system, AccentColor::System);
     }
 
     #[test]

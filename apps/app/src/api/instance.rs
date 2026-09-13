@@ -13,8 +13,10 @@ use theseus::data::{
     InstanceInstallTarget, InstanceLaunchOverridesPatch,
     InstanceLink as CoreInstanceLink, InstanceMetadata, LinkedModpackInfo,
 };
-use theseus::instance::InstallProjectWithDependenciesRequest;
 use theseus::instance::QuickPlayType;
+use theseus::instance::{
+    InstallContentBatchRequest, InstallProjectWithDependenciesRequest,
+};
 use theseus::pack::import::ImportLauncherType;
 use theseus::prelude::*;
 use theseus::server_address::ServerAddress;
@@ -79,6 +81,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             instance_preview_project_with_dependencies,
             instance_preview_project_with_dependencies_for_target,
             instance_queue_project_with_dependencies,
+            instance_queue_content_batch,
             instance_queue_curseforge_content,
             instance_queue_curseforge_world,
             instance_switch_project_version_with_dependencies,
@@ -135,6 +138,7 @@ pub struct Instance {
     pub custom_env_vars: Option<Vec<(String, String)>>,
     pub memory: Option<MemorySettings>,
     pub force_fullscreen: Option<bool>,
+    pub maximize_window: Option<bool>,
     pub game_resolution: Option<WindowSize>,
     pub launch_preparation_timeout: Option<u64>,
     pub hooks: Hooks,
@@ -145,6 +149,7 @@ pub struct Instance {
     pub linked_dot_minecraft: Option<String>,
     pub linked_version_id: Option<String>,
     pub linked_version_json_path: Option<String>,
+    pub linked_game_dir_mode: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -258,6 +263,12 @@ pub struct EditInstance {
         skip_serializing_if = "Option::is_none",
         with = "serde_with::rust::double_option"
     )]
+    pub maximize_window: Option<Option<bool>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "serde_with::rust::double_option"
+    )]
     pub game_resolution: Option<Option<WindowSize>>,
     #[serde(
         default,
@@ -307,6 +318,7 @@ impl From<InstanceMetadata> for Instance {
             custom_env_vars: metadata.launch_overrides.custom_env_vars,
             memory: metadata.launch_overrides.memory,
             force_fullscreen: metadata.launch_overrides.force_fullscreen,
+            maximize_window: metadata.launch_overrides.maximize_window,
             game_resolution: metadata.launch_overrides.game_resolution,
             launch_preparation_timeout: metadata
                 .launch_overrides
@@ -321,6 +333,7 @@ impl From<InstanceMetadata> for Instance {
             linked_version_json_path: metadata
                 .instance
                 .linked_version_json_path,
+            linked_game_dir_mode: metadata.instance.linked_game_dir_mode,
         }
     }
 }
@@ -458,6 +471,7 @@ fn edit_to_core(edit_instance: EditInstance) -> Result<CoreEditInstance> {
             custom_env_vars: edit_instance.custom_env_vars,
             memory: edit_instance.memory,
             force_fullscreen: edit_instance.force_fullscreen,
+            maximize_window: edit_instance.maximize_window,
             game_resolution: edit_instance.game_resolution,
             launch_preparation_timeout: edit_instance
                 .launch_preparation_timeout,
@@ -514,6 +528,7 @@ pub async fn instance_create_direct_link(
             base_path: request.base_path,
             instance_folder: request.instance_folder,
             instance_path: request.instance_path,
+            game_dir_mode: None,
         },
     )
     .await?;
@@ -522,7 +537,7 @@ pub async fn instance_create_direct_link(
 
 #[tauri::command]
 pub async fn instance_sync_direct_links(
-    roots: Vec<PathBuf>,
+    roots: Vec<theseus::data::ExternalMinecraftRoot>,
 ) -> Result<theseus::data::DirectLinkSyncReport> {
     Ok(theseus::instance::sync_direct_links(roots).await?)
 }
@@ -1170,6 +1185,13 @@ pub async fn instance_queue_project_with_dependencies(
         display_icon,
     )
     .await?)
+}
+
+#[tauri::command]
+pub async fn instance_queue_content_batch(
+    request: InstallContentBatchRequest,
+) -> Result<theseus::install::InstallJobSnapshot> {
+    Ok(theseus::instance::queue_content_batch(request).await?)
 }
 
 #[tauri::command]

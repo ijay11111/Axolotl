@@ -85,8 +85,11 @@ fn main() {
     println!("cargo:rerun-if-changed=src/seed_map/cubiomes_bridge.c");
     println!("cargo:rerun-if-changed=src/seed_map/cubiomes_bridge.h");
     println!("cargo:rerun-if-changed=vendor/cubiomes");
-    #[cfg(not(target_os = "windows"))]
-    println!("cargo:rustc-link-lib=m");
+    // Build scripts run for the host, so use Cargo's target metadata rather
+    // than `cfg(target_os = ...)` when deciding whether libm is needed.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        println!("cargo:rustc-link-lib=m");
+    }
 
     // Sadly, there is no better way to do it right now
     // You could try parsing source code here and detecting #[tauri::command]
@@ -103,6 +106,9 @@ fn main() {
                         "check_mojang_services",
                         "set_mojang_auth_use_mirror",
                         "login",
+                        "browser_login",
+                        "begin_device_login",
+                        "poll_device_login",
                         "begin_yggdrasil_login",
                         "finish_yggdrasil_login",
                         "list_yggdrasil_saved_logins",
@@ -292,6 +298,17 @@ fn main() {
                         "logs_explain_crash_with_ai",
                         "logs_undo_added_mod",
                         "logs_export_crash_context",
+                        "logs_get_log_share_settings",
+                        "logs_update_log_share_settings",
+                        "logs_logshare_upload_crash",
+                        "logs_logshare_get_insights",
+                        "logs_logshare_analyse_crash_direct",
+                        "logs_logshare_ai_analyze_stored",
+                        "logs_logshare_ai_analyze_direct",
+                        "logs_logshare_delete",
+                        "logs_list_shared_logs",
+                        "logs_record_shared_log",
+                        "logs_delete_shared_log",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
@@ -467,6 +484,7 @@ fn main() {
                         "instance_preview_project_with_dependencies",
                         "instance_preview_project_with_dependencies_for_target",
                         "instance_queue_project_with_dependencies",
+                        "instance_queue_content_batch",
                         "instance_queue_curseforge_content",
                         "instance_queue_curseforge_world",
                         "instance_switch_project_version_with_dependencies",
@@ -624,6 +642,7 @@ fn main() {
                         "open_path",
                         "show_launcher_logs_folder",
                         "export_error_logs",
+                        "export_launcher_logs",
                         "show_app_db_backups_folder",
                         "progress_bars_list",
                         "get_opening_command",
@@ -637,6 +656,14 @@ fn main() {
                 "storage",
                 InlinedPlugin::new()
                     .commands(&["storage_scan_start", "storage_open_paths"])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
+            )
+            .plugin(
+                "system-accent",
+                InlinedPlugin::new()
+                    .commands(&["system_accent_color"])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
                     ),
@@ -764,6 +791,8 @@ fn main() {
                         "servers_install_modpack",
                         "servers_start",
                         "servers_send_command",
+                        "servers_send_console_input",
+                        "servers_resize_console",
                         "servers_stop",
                         "servers_kill",
                         "servers_kill_port_process",

@@ -155,6 +155,18 @@ const messages = defineMessages({
 		id: 'app.settings.resources.minecraft-directory-must-end-with',
 		defaultMessage: 'The selected folder must be named .minecraft.',
 	},
+	minecraftDirectoryMode: {
+		id: 'app.settings.resources.minecraft-directory-mode',
+		defaultMessage: 'Game directory mode',
+	},
+	minecraftDirectoryModeIsolated: {
+		id: 'app.settings.resources.minecraft-directory-mode.isolated',
+		defaultMessage: 'Version-isolated',
+	},
+	minecraftDirectoryModeShared: {
+		id: 'app.settings.resources.minecraft-directory-mode.shared',
+		defaultMessage: 'Shared .minecraft directory',
+	},
 	purgeConfirmTitle: {
 		id: 'app.settings.resources.purge-confirm-title',
 		defaultMessage: 'Are you sure you want to purge the cache?',
@@ -420,29 +432,57 @@ const messages = defineMessages({
 
 const MINECRAFT_DIRECTORIES_STORAGE_KEY = 'axolotl-minecraft-directories'
 
+/** @typedef {import('@/helpers/instance').ExternalMinecraftRoot} ExternalMinecraftRoot */
+
 function isMinecraftDirectoryPath(value) {
 	const normalized = value.trim().replace(/[\\/]+$/, '')
 	return normalized.length > 0 && normalized.split(/[\\/]/).at(-1)?.toLowerCase() === '.minecraft'
 }
 
+/** @returns {ExternalMinecraftRoot[]} */
 function loadMinecraftDirectories() {
 	try {
 		const raw = localStorage.getItem(MINECRAFT_DIRECTORIES_STORAGE_KEY)
 		if (!raw) return []
 		const parsed = JSON.parse(raw)
 		if (!Array.isArray(parsed)) return []
-		return [...new Set(parsed.filter((value) => typeof value === 'string'))].filter(
-			isMinecraftDirectoryPath,
-		)
+		const directories = parsed.flatMap((value) => {
+			if (typeof value === 'string') return [{ path: value, mode: 'isolated' }]
+			if (value && typeof value === 'object' && typeof value.path === 'string') {
+				return [
+					{
+						path: value.path,
+						mode: value.mode === 'shared' ? 'shared' : 'isolated',
+					},
+				]
+			}
+			return []
+		})
+		return [
+			...new Map(
+				directories
+					.filter((directory) => isMinecraftDirectoryPath(directory.path))
+					.map((directory) => [directory.path.trim(), directory]),
+			).values(),
+		]
 	} catch {
 		return []
 	}
 }
 
+/** @param {ExternalMinecraftRoot[]} values */
 function persistMinecraftDirectories(values) {
 	try {
 		const validValues = [
-			...new Set(values.map((value) => value.trim()).filter(isMinecraftDirectoryPath)),
+			...new Map(
+				values
+					.map((value) => ({
+						path: value.path.trim(),
+						mode: value.mode === 'shared' ? 'shared' : 'isolated',
+					}))
+					.filter((value) => isMinecraftDirectoryPath(value.path))
+					.map((value) => [value.path, value]),
+			).values(),
 		]
 		localStorage.setItem(MINECRAFT_DIRECTORIES_STORAGE_KEY, JSON.stringify(validValues))
 	} catch {
@@ -480,6 +520,10 @@ const minecraftSourceOptions = computed(() => [
 	officialPreferredSourceOption.value,
 	{ value: 'mirror_preferred', label: formatMessage(messages.openBmclApiSource) },
 	officialOnlySourceOption.value,
+])
+const minecraftDirectoryModeOptions = computed(() => [
+	{ value: 'isolated', label: formatMessage(messages.minecraftDirectoryModeIsolated) },
+	{ value: 'shared', label: formatMessage(messages.minecraftDirectoryModeShared) },
 ])
 const modrinthSourceOptions = computed(() => [
 	automaticSourceOption.value,
@@ -683,8 +727,8 @@ async function addMinecraftDirectory() {
 		minecraftDirectoryError.value = formatMessage(messages.minecraftDirectoryMustEndWith)
 		return
 	}
-	if (!minecraftDirectories.value.includes(normalized)) {
-		minecraftDirectories.value.push(normalized)
+	if (!minecraftDirectories.value.some((entry) => entry.path === normalized)) {
+		minecraftDirectories.value.push({ path: normalized, mode: 'isolated' })
 	}
 }
 
@@ -761,11 +805,17 @@ function validateMinecraftDirectory(value) {
 						>
 							<StyledInput
 								:id="`minecraft-directory-${index}`"
-								v-model="minecraftDirectories[index]"
+								v-model="minecraftDirectories[index].path"
 								:icon="BoxIcon"
 								type="text"
 								wrapper-class="min-w-0 flex-1"
-								@change="validateMinecraftDirectory(minecraftDirectories[index])"
+								@change="validateMinecraftDirectory(minecraftDirectories[index].path)"
+							/>
+							<Combobox
+								v-model="minecraftDirectories[index].mode"
+								:aria-label="formatMessage(messages.minecraftDirectoryMode)"
+								:options="minecraftDirectoryModeOptions"
+								class="w-[200px] max-w-[45%]"
 							/>
 							<IconButton
 								:label="formatMessage(messages.removeMinecraftDirectory)"

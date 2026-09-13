@@ -120,6 +120,7 @@ async fn run_with_extra_launch_args_inner(
             offline_mode,
             extra_launch_args,
             gc_intent,
+            launch_preparation_timeout,
         ),
     )
     .await
@@ -141,6 +142,7 @@ async fn run_credentials(
     offline_mode: bool,
     extra_launch_args: Option<Vec<String>>,
     gc_intent: Option<GcLaunchIntent>,
+    launch_preparation_timeout: u64,
 ) -> crate::Result<(ProcessMetadata, Option<GcLaunchReport>)> {
     let state = State::get().await?;
     let settings = Settings::get(&state.pool).await?;
@@ -229,6 +231,10 @@ async fn run_credentials(
         .launch_overrides
         .game_resolution
         .unwrap_or(settings.game_resolution);
+    let maximize_window = context
+        .launch_overrides
+        .maximize_window
+        .unwrap_or(settings.maximize_window);
     let env_args = context
         .launch_overrides
         .custom_env_vars
@@ -351,6 +357,8 @@ async fn run_credentials(
         &wrapper,
         &memory,
         &resolution,
+        maximize_window,
+        launch_preparation_timeout,
         credentials,
         post_exit_hook,
         &context,

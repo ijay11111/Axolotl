@@ -1,7 +1,7 @@
 use crate::launcher::instance_runtime::InstanceRuntimeAdapter;
 use crate::state::State;
 use crate::util::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[tracing::instrument]
 pub async fn get_full_path(instance_id: &str) -> crate::Result<PathBuf> {
@@ -37,6 +37,7 @@ pub async fn get_mod_full_path(
 mod tests {
     use super::*;
     use crate::state::CreateDirectLinkInstance;
+    use std::path::Path;
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -79,6 +80,7 @@ mod tests {
                 base_path: minecraft.path().to_path_buf(),
                 instance_folder: format!("versions/{label}"),
                 instance_path: None,
+                game_dir_mode: None,
             },
             &state,
         )
@@ -108,6 +110,49 @@ mod tests {
                 .exists(),
             "no profile directory may be created for a direct-link instance"
         );
+    }
+
+    #[tokio::test]
+    async fn shared_direct_link_instance_resolves_to_minecraft_root() {
+        let state = global_state().await;
+        let minecraft = TempDir::new().unwrap();
+        let version_name = "paths-shared";
+        let version_dir = minecraft.path().join("versions").join(version_name);
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            version_dir.join(format!("{version_name}.json")),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": version_name,
+                "inheritsFrom": "1.20.1",
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let instance = crate::state::create_direct_link_instance(
+            CreateDirectLinkInstance {
+                name: None,
+                launcher_type:
+                    crate::api::pack::import::ImportLauncherType::Generic,
+                base_path: minecraft.path().to_path_buf(),
+                instance_folder: Path::new("versions")
+                    .join(version_name)
+                    .to_string_lossy()
+                    .to_string(),
+                instance_path: None,
+                game_dir_mode: Some(
+                    crate::launcher::ExternalGameDirMode::Shared,
+                ),
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let resolved = get_full_path(&instance.id).await.unwrap();
+
+        assert_eq!(resolved, io::canonicalize(minecraft.path()).unwrap());
     }
 
     #[tokio::test]

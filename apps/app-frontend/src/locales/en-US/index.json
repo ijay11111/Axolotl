@@ -1,16 +1,4 @@
 {
-  "app.settings.developer.announcement-preview": {"message":"Announcement preview"},
-  "app.settings.developer.announcement-preview-description": {"message":"Preview the real announcement components using local sample content, without fetching or marking real announcements as read."},
-  "app.settings.developer.preview-with-action": {"message":"Include an optional external-link button"},
-  "app.settings.developer.preview-announcement-modal": {"message":"Preview startup modal"},
-  "app.settings.developer.preview-announcement-popup": {"message":"Preview Popup notification"},
-  "app.remote-announcements.preview-title": {"message":"Announcement style preview"},
-  "app.remote-announcements.preview-summary": {"message":"This is a local preview. Select View announcement to preview the full Markdown content."},
-  "app.remote-announcements.preview-action": {"message":"Visit website"},
-  "app.remote-announcements.preview-content": {"message":"## Announcement preview\n\nThis is **sample content**, not a published announcement.\n\n- Supports headings, lists, and links\n- Close buttons are always available\n\n> Previewing does not change real announcement read status.\n\n| Type | Display |\n| --- | --- |\n| Modal | Full Markdown content |\n| Popup | Summary, then full content |\n\n[Visit the website](https://axlmc.org)"},
-  "app.remote-announcements.view": { "message": "View announcement" },
-  "app.remote-announcements.unread": { "message": "Unread" },
-  "app.remote-announcements.read-all": { "message": "Mark all announcements as read" },
   "app.account.signed-in-as": {
     "message": "Signed in as"
   },
@@ -22,18 +10,6 @@
   },
   "app.action-bar.downloads": {
     "message": "Downloads"
-  },
-  "app.action-bar.notifications": {
-    "message": "Notifications"
-  },
-  "app.action-bar.notifications.clear": {
-    "message": "Clear all"
-  },
-  "app.action-bar.notifications.dismiss": {
-    "message": "Dismiss notification"
-  },
-  "app.action-bar.notifications.empty": {
-    "message": "No notifications"
   },
   "app.action-bar.exporting-modpack": {
     "message": "Exporting modpack"
@@ -155,6 +131,18 @@
   "app.action-bar.no-instances-running": {
     "message": "No instances running"
   },
+  "app.action-bar.notifications": {
+    "message": "Notifications"
+  },
+  "app.action-bar.notifications.clear": {
+    "message": "Clear all"
+  },
+  "app.action-bar.notifications.dismiss": {
+    "message": "Dismiss notification"
+  },
+  "app.action-bar.notifications.empty": {
+    "message": "No notifications"
+  },
   "app.action-bar.offline": {
     "message": "Offline"
   },
@@ -263,6 +251,12 @@
   "app.ai-settings.field.region": {
     "message": "Region"
   },
+  "app.ai-settings.looking-for-translation": {
+    "message": "Looking for content translation?"
+  },
+  "app.ai-settings.looking-for-translation.description": {
+    "message": "Translating project titles and descriptions is configured under Language & translation. AI providers here can power that feature when you pick the AI translation service."
+  },
   "app.ai-settings.master-switch": {
     "message": "Enable AI features"
   },
@@ -322,6 +316,9 @@
   },
   "app.ai-settings.oauth.reconnect": {
     "message": "Reconnect account"
+  },
+  "app.ai-settings.open-language-translation": {
+    "message": "Open Language & translation"
   },
   "app.ai-settings.refresh-models": {
     "message": "Fetch models"
@@ -407,6 +404,15 @@
   "app.appearance-settings.accent-color.purple": {
     "message": "Purple"
   },
+  "app.appearance-settings.accent-color.system": {
+    "message": "Follow system"
+  },
+  "app.appearance-settings.accent-color.system-unsupported": {
+    "message": "System unsupported"
+  },
+  "app.appearance-settings.accent-color.system-unsupported-label": {
+    "message": "Follow system: System unsupported"
+  },
   "app.appearance-settings.accent-color.title": {
     "message": "Accent color"
   },
@@ -458,8 +464,14 @@
   "app.appearance-settings.custom-background.choose": {
     "message": "Choose image"
   },
+  "app.appearance-settings.custom-background.choose-or-drop": {
+    "message": "Click to choose, or drop an image here"
+  },
   "app.appearance-settings.custom-background.description": {
-    "message": "Choose a custom image and fine-tune how it blends with the launcher interface."
+    "message": "Choose or drop a custom image, then fine-tune how it blends with the launcher interface."
+  },
+  "app.appearance-settings.custom-background.drop-hint": {
+    "message": "Drop image here"
   },
   "app.appearance-settings.custom-background.empty": {
     "message": "No custom background selected"
@@ -544,6 +556,12 @@
   },
   "app.appearance-settings.show-play-time.title": {
     "message": "Show play time"
+  },
+  "app.appearance-settings.show-scroll-top.description": {
+    "message": "Show a floating back-to-top button on scrollable pages."
+  },
+  "app.appearance-settings.show-scroll-top.title": {
+    "message": "Show \"back to top\" button"
   },
   "app.appearance-settings.sidebar-instance-count.description": {
     "message": "Maximum number of instances to show in the sidebar. Set to 0 to show all."
@@ -1034,9 +1052,6 @@
   "app.crash-analysis.ai.error": {
     "message": "AI explanation failed: {message}"
   },
-  "app.crash-analysis.ai.settings.description": {
-    "message": "Optionally send a sanitized and shortened crash context to a model configured in AI Providers."
-  },
   "app.crash-analysis.ai.settings.enabled": {
     "message": "Enable AI explanations"
   },
@@ -1051,9 +1066,6 @@
   },
   "app.crash-analysis.ai.settings.provider": {
     "message": "AI provider"
-  },
-  "app.crash-analysis.ai.settings.title": {
-    "message": "Crash AI explanation"
   },
   "app.crash-analysis.ai.title": {
     "message": "AI crash explanation"
@@ -1160,6 +1172,9 @@
   "app.curseforge.network-download-failed.notification-title": {
     "message": "Could not download from CurseForge"
   },
+  "app.direct-link-sync.issues-title": {
+    "message": "External Minecraft instances need attention"
+  },
   "app.downloads.action-needed": {
     "message": "Action needed"
   },
@@ -1256,11 +1271,20 @@
   "app.downloads.item-status.completed": {
     "message": "Completed"
   },
+  "app.downloads.item-status.connecting": {
+    "message": "Connecting"
+  },
   "app.downloads.item-status.downloading": {
     "message": "Downloading"
   },
   "app.downloads.item-status.failed": {
     "message": "Failed"
+  },
+  "app.downloads.item-status.finalizing": {
+    "message": "Finalizing"
+  },
+  "app.downloads.item-status.metadata": {
+    "message": "Loading metadata"
   },
   "app.downloads.item-status.pending-verification": {
     "message": "Pending verification"
@@ -1271,11 +1295,23 @@
   "app.downloads.item-status.verifying": {
     "message": "Verifying"
   },
+  "app.downloads.item-status.waiting-for-database": {
+    "message": "Waiting for database"
+  },
+  "app.downloads.item-status.waiting-for-resource": {
+    "message": "Waiting for download resources"
+  },
+  "app.downloads.item-status.worker-started": {
+    "message": "Starting"
+  },
   "app.downloads.item-status.writing": {
     "message": "Writing"
   },
   "app.downloads.local": {
     "message": "Local"
+  },
+  "app.downloads.manual-download-project-file": {
+    "message": "Project {projectId} · File {fileId}"
   },
   "app.downloads.manual-download-required": {
     "message": "CurseForge requires this file to be downloaded manually."
@@ -1397,14 +1433,71 @@
   "app.downloads.open-instance": {
     "message": "Open instance"
   },
+  "app.downloads.open-manual-download": {
+    "message": "Open"
+  },
   "app.downloads.operation.upgrade": {
     "message": "Upgrade"
+  },
+  "app.downloads.phase.applying-content": {
+    "message": "Applying content"
+  },
+  "app.downloads.phase.completed": {
+    "message": "Completed"
+  },
+  "app.downloads.phase.creating-backup": {
+    "message": "Creating backup"
+  },
+  "app.downloads.phase.downloading-content": {
+    "message": "Downloading content"
+  },
+  "app.downloads.phase.downloading-minecraft": {
+    "message": "Downloading Minecraft"
   },
   "app.downloads.phase.downloading-pack-file": {
     "message": "Downloading modpack"
   },
+  "app.downloads.phase.extracting-overrides": {
+    "message": "Extracting overrides"
+  },
+  "app.downloads.phase.finalizing": {
+    "message": "Finalizing"
+  },
+  "app.downloads.phase.preparing-instance": {
+    "message": "Preparing instance"
+  },
+  "app.downloads.phase.preparing-java": {
+    "message": "Preparing Java"
+  },
+  "app.downloads.phase.reading-pack-manifest": {
+    "message": "Reading manifest"
+  },
+  "app.downloads.phase.resolving-loader": {
+    "message": "Resolving loader"
+  },
+  "app.downloads.phase.resolving-minecraft": {
+    "message": "Resolving Minecraft"
+  },
+  "app.downloads.phase.resolving-pack": {
+    "message": "Resolving modpack"
+  },
+  "app.downloads.phase.rolling-back": {
+    "message": "Rolling back changes"
+  },
+  "app.downloads.phase.running-loader-processors": {
+    "message": "Installing loader"
+  },
+  "app.downloads.phase.staging-content": {
+    "message": "Staging content"
+  },
   "app.downloads.phase.unknown": {
     "message": "Working"
+  },
+  "app.downloads.phase.updating-loader": {
+    "message": "Updating loader"
+  },
+  "app.downloads.phase.verifying": {
+    "message": "Verifying"
   },
   "app.downloads.phase.verifying-downloaded-files": {
     "message": "Verifying files and continuing installation"
@@ -1735,6 +1828,18 @@
   },
   "app.error.space-title": {
     "message": "Not enough space"
+  },
+  "app.error.state-database-newer-description": {
+    "message": "The database was last opened by a newer version of Axolotl, which upgraded it to a format this version cannot read. Your instances and settings are still there."
+  },
+  "app.error.state-database-newer-fix-downgrade": {
+    "message": "If you are trying out a build rather than using the launcher normally, revert the database with scripts/axolotl/downgrade-app-db.mjs instead."
+  },
+  "app.error.state-database-newer-fix-intro": {
+    "message": "To start the launcher again, either:"
+  },
+  "app.error.state-database-newer-fix-update": {
+    "message": "Reinstall the newer version of Axolotl - it opens this database as it is."
   },
   "app.error.state-description": {
     "message": "Axolotl Launcher failed to load correctly. A file may be corrupted or an essential file may be missing."
@@ -2230,6 +2335,9 @@
   },
   "app.home.worlds.pinned": {
     "message": "Pinned worlds"
+  },
+  "app.initialization.quit": {
+    "message": "Quit launcher"
   },
   "app.install.phase.downloading_content": {
     "message": "Downloading content"
@@ -4406,6 +4514,201 @@
   "app.lab.seed-map.biome-tag": {
     "message": "Biome"
   },
+  "app.lab.seed-map.biome.badlands": {
+    "message": "Badlands"
+  },
+  "app.lab.seed-map.biome.bamboo-jungle": {
+    "message": "Bamboo Jungle"
+  },
+  "app.lab.seed-map.biome.basalt-deltas": {
+    "message": "Basalt Deltas"
+  },
+  "app.lab.seed-map.biome.beach": {
+    "message": "Beach"
+  },
+  "app.lab.seed-map.biome.birch-forest": {
+    "message": "Birch Forest"
+  },
+  "app.lab.seed-map.biome.cherry-grove": {
+    "message": "Cherry Grove"
+  },
+  "app.lab.seed-map.biome.cold-ocean": {
+    "message": "Cold Ocean"
+  },
+  "app.lab.seed-map.biome.crimson-forest": {
+    "message": "Crimson Forest"
+  },
+  "app.lab.seed-map.biome.dark-forest": {
+    "message": "Dark Forest"
+  },
+  "app.lab.seed-map.biome.deep-cold-ocean": {
+    "message": "Deep Cold Ocean"
+  },
+  "app.lab.seed-map.biome.deep-dark": {
+    "message": "Deep Dark"
+  },
+  "app.lab.seed-map.biome.deep-frozen-ocean": {
+    "message": "Deep Frozen Ocean"
+  },
+  "app.lab.seed-map.biome.deep-lukewarm-ocean": {
+    "message": "Deep Lukewarm Ocean"
+  },
+  "app.lab.seed-map.biome.deep-ocean": {
+    "message": "Deep Ocean"
+  },
+  "app.lab.seed-map.biome.desert": {
+    "message": "Desert"
+  },
+  "app.lab.seed-map.biome.dripstone-caves": {
+    "message": "Dripstone Caves"
+  },
+  "app.lab.seed-map.biome.end-barrens": {
+    "message": "End Barrens"
+  },
+  "app.lab.seed-map.biome.end-highlands": {
+    "message": "End Highlands"
+  },
+  "app.lab.seed-map.biome.end-midlands": {
+    "message": "End Midlands"
+  },
+  "app.lab.seed-map.biome.eroded-badlands": {
+    "message": "Eroded Badlands"
+  },
+  "app.lab.seed-map.biome.flower-forest": {
+    "message": "Flower Forest"
+  },
+  "app.lab.seed-map.biome.forest": {
+    "message": "Forest"
+  },
+  "app.lab.seed-map.biome.frozen-ocean": {
+    "message": "Frozen Ocean"
+  },
+  "app.lab.seed-map.biome.frozen-peaks": {
+    "message": "Frozen Peaks"
+  },
+  "app.lab.seed-map.biome.frozen-river": {
+    "message": "Frozen River"
+  },
+  "app.lab.seed-map.biome.grove": {
+    "message": "Grove"
+  },
+  "app.lab.seed-map.biome.ice-spikes": {
+    "message": "Ice Spikes"
+  },
+  "app.lab.seed-map.biome.jagged-peaks": {
+    "message": "Jagged Peaks"
+  },
+  "app.lab.seed-map.biome.jungle": {
+    "message": "Jungle"
+  },
+  "app.lab.seed-map.biome.lukewarm-ocean": {
+    "message": "Lukewarm Ocean"
+  },
+  "app.lab.seed-map.biome.lush-caves": {
+    "message": "Lush Caves"
+  },
+  "app.lab.seed-map.biome.mangrove-swamp": {
+    "message": "Mangrove Swamp"
+  },
+  "app.lab.seed-map.biome.meadow": {
+    "message": "Meadow"
+  },
+  "app.lab.seed-map.biome.mushroom-fields": {
+    "message": "Mushroom Fields"
+  },
+  "app.lab.seed-map.biome.nether-wastes": {
+    "message": "Nether Wastes"
+  },
+  "app.lab.seed-map.biome.ocean": {
+    "message": "Ocean"
+  },
+  "app.lab.seed-map.biome.old-growth-birch-forest": {
+    "message": "Old Growth Birch Forest"
+  },
+  "app.lab.seed-map.biome.old-growth-pine-taiga": {
+    "message": "Old Growth Pine Taiga"
+  },
+  "app.lab.seed-map.biome.old-growth-spruce-taiga": {
+    "message": "Old Growth Spruce Taiga"
+  },
+  "app.lab.seed-map.biome.pale-garden": {
+    "message": "Pale Garden"
+  },
+  "app.lab.seed-map.biome.plains": {
+    "message": "Plains"
+  },
+  "app.lab.seed-map.biome.river": {
+    "message": "River"
+  },
+  "app.lab.seed-map.biome.savanna": {
+    "message": "Savanna"
+  },
+  "app.lab.seed-map.biome.savanna-plateau": {
+    "message": "Savanna Plateau"
+  },
+  "app.lab.seed-map.biome.small-end-islands": {
+    "message": "Small End Islands"
+  },
+  "app.lab.seed-map.biome.snowy-beach": {
+    "message": "Snowy Beach"
+  },
+  "app.lab.seed-map.biome.snowy-plains": {
+    "message": "Snowy Plains"
+  },
+  "app.lab.seed-map.biome.snowy-slopes": {
+    "message": "Snowy Slopes"
+  },
+  "app.lab.seed-map.biome.snowy-taiga": {
+    "message": "Snowy Taiga"
+  },
+  "app.lab.seed-map.biome.soul-sand-valley": {
+    "message": "Soul Sand Valley"
+  },
+  "app.lab.seed-map.biome.sparse-jungle": {
+    "message": "Sparse Jungle"
+  },
+  "app.lab.seed-map.biome.stony-peaks": {
+    "message": "Stony Peaks"
+  },
+  "app.lab.seed-map.biome.stony-shore": {
+    "message": "Stony Shore"
+  },
+  "app.lab.seed-map.biome.sulfur-caves": {
+    "message": "Sulfur Caves"
+  },
+  "app.lab.seed-map.biome.sunflower-plains": {
+    "message": "Sunflower Plains"
+  },
+  "app.lab.seed-map.biome.swamp": {
+    "message": "Swamp"
+  },
+  "app.lab.seed-map.biome.taiga": {
+    "message": "Taiga"
+  },
+  "app.lab.seed-map.biome.the-end": {
+    "message": "The End"
+  },
+  "app.lab.seed-map.biome.warm-ocean": {
+    "message": "Warm Ocean"
+  },
+  "app.lab.seed-map.biome.warped-forest": {
+    "message": "Warped Forest"
+  },
+  "app.lab.seed-map.biome.windswept-forest": {
+    "message": "Windswept Forest"
+  },
+  "app.lab.seed-map.biome.windswept-gravelly-hills": {
+    "message": "Windswept Gravelly Hills"
+  },
+  "app.lab.seed-map.biome.windswept-hills": {
+    "message": "Windswept Hills"
+  },
+  "app.lab.seed-map.biome.windswept-savanna": {
+    "message": "Windswept Savanna"
+  },
+  "app.lab.seed-map.biome.wooded-badlands": {
+    "message": "Wooded Badlands"
+  },
   "app.lab.seed-map.center-spawn": {
     "message": "Center spawn"
   },
@@ -4506,7 +4809,7 @@
     "message": "Deep underground"
   },
   "app.lab.seed-map.elevation.shallow-underground": {
-    "message": "Underground"
+    "message": "Shallow underground"
   },
   "app.lab.seed-map.elevation.surface": {
     "message": "Surface"
@@ -4904,6 +5207,111 @@
   "app.library.view.standard": {
     "message": "Standard grid"
   },
+  "app.log-share.ai.action": {
+    "message": "Deep AI analysis"
+  },
+  "app.log-share.ai.failed": {
+    "message": "LogAgent analysis failed: {message}"
+  },
+  "app.log-share.ai.limit": {
+    "message": "Reached tool loop limit"
+  },
+  "app.log-share.ai.queued": {
+    "message": "Queued, about {position} ahead"
+  },
+  "app.log-share.ai.queued-front": {
+    "message": "Queued, waiting for a free slot"
+  },
+  "app.log-share.ai.thinking": {
+    "message": "Thinking…"
+  },
+  "app.log-share.ai.tool": {
+    "message": "Using tool: {name}"
+  },
+  "app.log-share.ai.tool-result": {
+    "message": "Tool result received"
+  },
+  "app.log-share.ai.working": {
+    "message": "Analyzing with LogAgent…"
+  },
+  "app.log-share.settings.ai-source": {
+    "message": "AI analysis source"
+  },
+  "app.log-share.settings.ai-source-custom": {
+    "message": "Custom AI provider"
+  },
+  "app.log-share.settings.ai-source-description": {
+    "message": "Both sources send a sanitized and shortened crash context. AI output may be inaccurate."
+  },
+  "app.log-share.settings.ai-source-logshare": {
+    "message": "LogShare AI"
+  },
+  "app.log-share.settings.auto-upload": {
+    "message": "Upload to get a structured summary automatically"
+  },
+  "app.log-share.settings.auto-upload-description": {
+    "message": "Only effective in LogShare AI mode."
+  },
+  "app.log-share.settings.description": {
+    "message": "Share crash diagnostics with LogShare for a structured summary and optional AI analysis. LogShare is preferred; mclo.gs is used as a fallback."
+  },
+  "app.log-share.settings.multi-file": {
+    "message": "Multi-file upload"
+  },
+  "app.log-share.settings.multi-file-description": {
+    "message": "Upload latest.log, crash reports, hs_err and launcher logs together."
+  },
+  "app.log-share.settings.no-storage": {
+    "message": "Analyze without storing logs"
+  },
+  "app.log-share.settings.no-storage-description": {
+    "message": "Submit content directly for analysis and skip the stored upload. Disables the automatic summary."
+  },
+  "app.log-share.settings.share-provider": {
+    "message": "Log sharing service"
+  },
+  "app.log-share.settings.share-provider-description": {
+    "message": "Where the diagnostic link is uploaded when you share it."
+  },
+  "app.log-share.settings.show-progress": {
+    "message": "Show AI analysis progress"
+  },
+  "app.log-share.settings.show-progress-description": {
+    "message": "Display thinking, tool and limit status while LogShare AI is working."
+  },
+  "app.log-share.settings.title": {
+    "message": "Log sharing & AI analysis"
+  },
+  "app.log-share.shared-logs.delete": {
+    "message": "Delete"
+  },
+  "app.log-share.shared-logs.delete-failed": {
+    "message": "Failed to delete the shared log."
+  },
+  "app.log-share.shared-logs.deleted": {
+    "message": "Shared log removed."
+  },
+  "app.log-share.shared-logs.deleting": {
+    "message": "Deleting…"
+  },
+  "app.log-share.shared-logs.description": {
+    "message": "Every diagnostic you have shared is listed here. Delete an entry to remove it from your history and request its removal from the sharing service."
+  },
+  "app.log-share.shared-logs.empty": {
+    "message": "No shared logs yet."
+  },
+  "app.log-share.shared-logs.title": {
+    "message": "Shared logs"
+  },
+  "app.log-share.shared-logs.truncated": {
+    "message": "Truncated"
+  },
+  "app.log-share.summary.loading": {
+    "message": "Loading structured summary..."
+  },
+  "app.log-share.summary.title": {
+    "message": "LogShare analysis"
+  },
   "app.memory-display.available": {
     "message": "{memory} available"
   },
@@ -5121,7 +5529,7 @@
     "message": "No log content was found to share or analyze. Make sure the instance has logs generated in the last few minutes."
   },
   "app.minecraft-crash.preparation-timed-out": {
-    "message": "Launch preparation did not finish within the configured timeout and was cancelled. Check the Java path, launch hooks, wrapper command, and network connection, then try again."
+    "message": "Launch preparation did not finish within 60 seconds and was cancelled. Check the Java path, launch hooks, wrapper command, and network connection, then try again."
   },
   "app.minecraft-crash.preview-instance": {
     "message": "Minecraft test instance"
@@ -5134,6 +5542,9 @@
   },
   "app.minecraft-crash.share-failed": {
     "message": "Failed to share the diagnostic"
+  },
+  "app.minecraft-crash.share-fallback": {
+    "message": "LogShare is unavailable, so the diagnostic was shared via mclo.gs."
   },
   "app.minecraft-crash.share-ready": {
     "message": "Diagnostic link is ready to share"
@@ -5619,7 +6030,7 @@
     "message": "Bring your own AI provider"
   },
   "app.onboarding.appearance.description": {
-    "message": "Theme, accent, backgrounds, and window effects all live here. Make the launcher feel familiar."
+    "message": "Theme, accent, custom launcher background, and window effects all live here. Make the launcher feel familiar."
   },
   "app.onboarding.appearance.title": {
     "message": "Set the vibe"
@@ -5769,7 +6180,7 @@
     "message": "Useful tools, built in"
   },
   "app.onboarding.language.description": {
-    "message": "Pick the launcher language and manage translations. No decoder ring required."
+    "message": "Switch the launcher UI language here, or keep System language. Content translation for project pages is configured on this page too."
   },
   "app.onboarding.language.title": {
     "message": "Speak your language"
@@ -5802,7 +6213,7 @@
     "message": "Do not cook the computer"
   },
   "app.onboarding.settings.description": {
-    "message": "The useful controls live here: launcher preferences, game launch behavior, content downloads, and privacy."
+    "message": "Appearance, language, AI providers, launch defaults, content downloads, and privacy all live here."
   },
   "app.onboarding.settings.title": {
     "message": "Make it yours"
@@ -5836,6 +6247,9 @@
   },
   "app.onboarding.welcome.footer": {
     "message": "Your last next launcher."
+  },
+  "app.onboarding.welcome.language-label": {
+    "message": "Language"
   },
   "app.onboarding.welcome.title": {
     "message": "Everything is ready"
@@ -6011,6 +6425,27 @@
   "app.project.versions.start-server": {
     "message": "Create server"
   },
+  "app.remote-announcements.preview-action": {
+    "message": "Visit website"
+  },
+  "app.remote-announcements.preview-content": {
+    "message": "## Announcement preview\n\nThis is **sample content**, not a published announcement.\n\n- Supports headings, lists, and links\n- Close buttons are always available\n\n> Previewing does not change real announcement read status.\n\n| Type | Display |\n| --- | --- |\n| Modal | Full Markdown content |\n| Popup | Summary, then full content |\n\n[Visit the website](https://axlmc.org)"
+  },
+  "app.remote-announcements.preview-summary": {
+    "message": "This is a local preview. Select View announcement to preview the full Markdown content."
+  },
+  "app.remote-announcements.preview-title": {
+    "message": "Announcement style preview"
+  },
+  "app.remote-announcements.read-all": {
+    "message": "Mark all announcements as read"
+  },
+  "app.remote-announcements.unread": {
+    "message": "Unread"
+  },
+  "app.remote-announcements.view": {
+    "message": "View announcement"
+  },
   "app.restarting": {
     "message": "Restarting..."
   },
@@ -6055,6 +6490,9 @@
   },
   "app.servers.card.type": {
     "message": "{type} · {version}"
+  },
+  "app.servers.console.forge-command-placeholder": {
+    "message": "Send a command - Tab completion supported"
   },
   "app.servers.console.not-running": {
     "message": "The server is not running"
@@ -6479,6 +6917,9 @@
   "app.servers.settings.memory": {
     "message": "Memory"
   },
+  "app.servers.settings.memory-mb": {
+    "message": "Memory (MB)"
+  },
   "app.servers.settings.name": {
     "message": "Server name"
   },
@@ -6629,6 +7070,9 @@
   "app.settings.about.copy-qq-group": {
     "message": "Copy group number"
   },
+  "app.settings.about.copying-guidelines": {
+    "message": "Copying guidelines"
+  },
   "app.settings.about.description": {
     "message": "Your last launcher."
   },
@@ -6642,7 +7086,7 @@
     "message": "Click to open a hidden Mini Game"
   },
   "app.settings.about.easteregg.contributors-title": {
-    "message": "Contributors' mini game"
+    "message": "贡献者彩蛋"
   },
   "app.settings.about.easteregg.game-title": {
     "message": "Mini Game"
@@ -6800,6 +7244,15 @@
   "app.settings.defaults.java-arguments-placeholder": {
     "message": "Enter Java arguments..."
   },
+  "app.settings.defaults.maximize-window": {
+    "message": "Maximize window"
+  },
+  "app.settings.defaults.maximize-window-description": {
+    "message": "Maximize the Minecraft window when it starts."
+  },
+  "app.settings.defaults.maximize-window.unsupported": {
+    "message": "Not supported on this operating system."
+  },
   "app.settings.defaults.memory": {
     "message": "Memory allocated"
   },
@@ -6851,6 +7304,21 @@
   "app.settings.developer-mode-enabled": {
     "message": "Developer mode enabled."
   },
+  "app.settings.developer.announcement-preview": {
+    "message": "Announcement preview"
+  },
+  "app.settings.developer.announcement-preview-description": {
+    "message": "Preview the real announcement components using local sample content, without fetching or marking real announcements as read."
+  },
+  "app.settings.developer.preview-announcement-modal": {
+    "message": "Preview startup modal"
+  },
+  "app.settings.developer.preview-announcement-popup": {
+    "message": "Preview Popup notification"
+  },
+  "app.settings.developer.preview-with-action": {
+    "message": "Include an optional external-link button"
+  },
   "app.settings.downloading": {
     "message": "Downloading v{version}"
   },
@@ -6867,7 +7335,7 @@
     "message": "Game"
   },
   "app.settings.groups.launcher": {
-    "message": "Launcher"
+    "message": "Interface"
   },
   "app.settings.groups.support": {
     "message": "App & support"
@@ -6956,6 +7424,117 @@
   "app.settings.java.view-installed": {
     "message": "View installed Java"
   },
+  "app.settings.language.system": {
+    "message": "System language"
+  },
+  "app.settings.language.system.description": {
+    "message": "Follow the language of this device"
+  },
+  "app.settings.language.system.disabled-tooltip": {
+    "message": "Turn on to follow the language of this device automatically."
+  },
+  "app.settings.language.system.enabled-tooltip": {
+    "message": "Following this device. Open the language list or turn this off to pick manually."
+  },
+  "app.settings.logs.export.button": {
+    "message": "Export logs…"
+  },
+  "app.settings.logs.export.description": {
+    "message": "Package launcher logs with an optional environment summary, instance log, and crash analysis."
+  },
+  "app.settings.logs.export.modal.cancel": {
+    "message": "Cancel"
+  },
+  "app.settings.logs.export.modal.confirm": {
+    "message": "Export"
+  },
+  "app.settings.logs.export.modal.crash-analysis": {
+    "message": "Crash analysis (when a crash is detected)"
+  },
+  "app.settings.logs.export.modal.description": {
+    "message": "Choose how much detail to include. Exported logs have access tokens, Minecraft tokens, and IP addresses replaced with placeholders."
+  },
+  "app.settings.logs.export.modal.extras": {
+    "message": "Additional information"
+  },
+  "app.settings.logs.export.modal.instance-logs": {
+    "message": "Most recent instance log"
+  },
+  "app.settings.logs.export.modal.level": {
+    "message": "Log level"
+  },
+  "app.settings.logs.export.modal.level.all": {
+    "message": "All levels"
+  },
+  "app.settings.logs.export.modal.level.debug": {
+    "message": "Debug and above"
+  },
+  "app.settings.logs.export.modal.level.info": {
+    "message": "Info and above"
+  },
+  "app.settings.logs.export.modal.range": {
+    "message": "Time range"
+  },
+  "app.settings.logs.export.modal.range.2-hours": {
+    "message": "Last 2 hours"
+  },
+  "app.settings.logs.export.modal.range.30-minutes": {
+    "message": "Last 30 minutes"
+  },
+  "app.settings.logs.export.modal.range.all": {
+    "message": "All sessions"
+  },
+  "app.settings.logs.export.modal.system-info": {
+    "message": "System and environment summary"
+  },
+  "app.settings.logs.export.modal.title": {
+    "message": "Export logs"
+  },
+  "app.settings.logs.export.notification-text": {
+    "message": "The log archive was saved to {path}"
+  },
+  "app.settings.logs.export.notification-title": {
+    "message": "Logs exported"
+  },
+  "app.settings.logs.export.title": {
+    "message": "Export logs"
+  },
+  "app.settings.logs.level.debug": {
+    "message": "Debug"
+  },
+  "app.settings.logs.level.description": {
+    "message": "Choose the lowest level written to the launcher log files."
+  },
+  "app.settings.logs.level.error": {
+    "message": "Error"
+  },
+  "app.settings.logs.level.hint": {
+    "message": "Info is the default. Debug and Trace record more detail and create larger log files."
+  },
+  "app.settings.logs.level.hint-beta": {
+    "message": "Beta uses Debug by default and only allows Debug or Trace so diagnostics retain enough detail."
+  },
+  "app.settings.logs.level.info": {
+    "message": "Info"
+  },
+  "app.settings.logs.level.title": {
+    "message": "Log level"
+  },
+  "app.settings.logs.level.trace": {
+    "message": "Trace (everything)"
+  },
+  "app.settings.logs.level.warn": {
+    "message": "Warning"
+  },
+  "app.settings.logs.open-folder": {
+    "message": "Open logs folder"
+  },
+  "app.settings.logs.retention.description": {
+    "message": "The last 30 minutes keep every level. Trace entries are dropped after 30 minutes, and debug entries after 2 hours. Warnings and errors stay for up to 3 days."
+  },
+  "app.settings.logs.retention.title": {
+    "message": "Automatic log retention"
+  },
   "app.settings.privacy.data-handling": {
     "message": "Telemetry uses a random installation identifier and sends only a daily activity signal. Turning telemetry off clears pending data immediately."
   },
@@ -6971,6 +7550,9 @@
   "app.settings.privacy.telemetry-description": {
     "message": "Send one anonymous daily activity signal to improve usage statistics. Minecraft logs and account credentials are never uploaded."
   },
+  "app.settings.resources.add-minecraft-directory": {
+    "message": "Add .minecraft directory"
+  },
   "app.settings.resources.app-cache": {
     "message": "App cache"
   },
@@ -6980,32 +7562,14 @@
   "app.settings.resources.app-directory": {
     "message": "App directory"
   },
-  "app.settings.resources.axolotl-data-directory": {
-    "message": "Axolotl data directory"
-  },
   "app.settings.resources.app-directory-description": {
     "message": "The directory where the launcher stores all of its files. Changes apply after restarting the launcher."
   },
   "app.settings.resources.app-directory-description-portable": {
     "message": "You are currently running in portable mode. The app directory is fixed and cannot be changed."
   },
-  "app.settings.resources.minecraft-directories": {
-    "message": "Minecraft directories"
-  },
-  "app.settings.resources.minecraft-directories-description": {
-    "message": "Add one or more .minecraft folders for instances that use an external game directory. These folders are kept separate from Axolotl data."
-  },
-  "app.settings.resources.add-minecraft-directory": {
-    "message": "Add .minecraft directory"
-  },
-  "app.settings.resources.select-minecraft-directory": {
-    "message": "Select a .minecraft directory"
-  },
-  "app.settings.resources.remove-minecraft-directory": {
-    "message": "Remove .minecraft directory"
-  },
-  "app.settings.resources.minecraft-directory-must-end-with": {
-    "message": "The selected folder must be named .minecraft."
+  "app.settings.resources.axolotl-data-directory": {
+    "message": "Axolotl data directory"
   },
   "app.settings.resources.concurrency.manual": {
     "message": "Manual"
@@ -7057,6 +7621,24 @@
   },
   "app.settings.resources.maximum-writes-description": {
     "message": "The maximum number of files the launcher can write to disk at once. Use a lower value if you frequently get I/O errors. An app restart is required."
+  },
+  "app.settings.resources.minecraft-directories": {
+    "message": "Minecraft directories"
+  },
+  "app.settings.resources.minecraft-directories-description": {
+    "message": "Add one or more .minecraft folders for instances that use an external game directory. These folders are kept separate from Axolotl data."
+  },
+  "app.settings.resources.minecraft-directory-mode": {
+    "message": "Game directory mode"
+  },
+  "app.settings.resources.minecraft-directory-mode.isolated": {
+    "message": "Version-isolated"
+  },
+  "app.settings.resources.minecraft-directory-mode.shared": {
+    "message": "Shared .minecraft directory"
+  },
+  "app.settings.resources.minecraft-directory-must-end-with": {
+    "message": "The selected folder must be named .minecraft."
   },
   "app.settings.resources.minecraft-file-source": {
     "message": "Minecraft files, loaders, and Java"
@@ -7160,6 +7742,9 @@
   "app.settings.resources.purge-confirm-title": {
     "message": "Are you sure you want to purge the cache?"
   },
+  "app.settings.resources.remove-minecraft-directory": {
+    "message": "Remove .minecraft directory"
+  },
   "app.settings.resources.reset-import-directory": {
     "message": "Use system Downloads folder"
   },
@@ -7168,6 +7753,9 @@
   },
   "app.settings.resources.select-import-directory": {
     "message": "Select monitored folder"
+  },
+  "app.settings.resources.select-minecraft-directory": {
+    "message": "Select a .minecraft directory"
   },
   "app.settings.resources.source.automatic": {
     "message": "Automatic (recommended)"
@@ -7320,7 +7908,7 @@
     "message": "About"
   },
   "app.settings.tabs.ai": {
-    "message": "AI"
+    "message": "AI features"
   },
   "app.settings.tabs.content-downloads": {
     "message": "Content & downloads"
@@ -7329,7 +7917,7 @@
     "message": "Home & navigation"
   },
   "app.settings.tabs.interface": {
-    "message": "Interface & appearance"
+    "message": "Appearance"
   },
   "app.settings.tabs.java-performance": {
     "message": "Java & performance"
@@ -7338,13 +7926,19 @@
     "message": "Language & translation"
   },
   "app.settings.tabs.launch-defaults": {
-    "message": "Launch & instance defaults"
+    "message": "Launch defaults"
+  },
+  "app.settings.tabs.logs": {
+    "message": "Logs & diagnostics"
   },
   "app.settings.tabs.network-multiplayer": {
     "message": "Network & multiplayer"
   },
   "app.settings.tabs.privacy-data": {
     "message": "Privacy & data sharing"
+  },
+  "app.settings.tabs.shortcut-settings": {
+    "message": "Keyboard shortcuts"
   },
   "app.settings.tabs.storage": {
     "message": "Storage"
@@ -7380,7 +7974,7 @@
     "message": "Copy database"
   },
   "app.settings.updates.channel.copy-database-description": {
-    "message": "To prevent potential issues, the Beta version will use separate data storage so as not to affect the proper functioning of the official version. It seems this is your first time using the Beta version. Would you like to copy the data from the stable version to the Beta version? This action cannot be automatically undone."
+    "message": "Would you like to copy your Release database into the Beta channel? This cannot be undone automatically."
   },
   "app.settings.updates.channel.copy-database-title": {
     "message": "Copy Release data to Beta?"
@@ -7475,6 +8069,9 @@
   "app.settings.updates.database-operation.release-to-beta": {
     "message": "Copy Release to Beta"
   },
+  "app.settings.updates.database-operation.success": {
+    "message": "{source} database was copied to {target} successfully."
+  },
   "app.settings.updates.disabled": {
     "message": "Updates are disabled in this build."
   },
@@ -7525,6 +8122,108 @@
   },
   "app.settings.updates.up-to-date": {
     "message": "Axolotl is up to date."
+  },
+  "app.shortcut-settings.change-shortcut": {
+    "message": "Change the shortcut for {action}"
+  },
+  "app.shortcut-settings.enable": {
+    "message": "Enable quick scrolling"
+  },
+  "app.shortcut-settings.end-action": {
+    "message": "Scroll to the bottom"
+  },
+  "app.shortcut-settings.end-action-description": {
+    "message": "Moves the page you are reading to the bottom."
+  },
+  "app.shortcut-settings.home-action": {
+    "message": "Scroll to the top"
+  },
+  "app.shortcut-settings.home-action-description": {
+    "message": "Moves the page you are reading to the top."
+  },
+  "app.shortcut-settings.nav-create": {
+    "message": "Create new instance"
+  },
+  "app.shortcut-settings.nav-create-description": {
+    "message": "Jump to creating a new instance."
+  },
+  "app.shortcut-settings.nav-description": {
+    "message": "Jump to a menu item with its shortcut. Each shortcut is off until enabled."
+  },
+  "app.shortcut-settings.nav-discover": {
+    "message": "Discover content"
+  },
+  "app.shortcut-settings.nav-discover-description": {
+    "message": "Jump to browsing content."
+  },
+  "app.shortcut-settings.nav-downloads": {
+    "message": "Downloads"
+  },
+  "app.shortcut-settings.nav-downloads-description": {
+    "message": "Jump to downloads."
+  },
+  "app.shortcut-settings.nav-home": {
+    "message": "Home"
+  },
+  "app.shortcut-settings.nav-home-description": {
+    "message": "Jump to the Home page."
+  },
+  "app.shortcut-settings.nav-lab": {
+    "message": "Lab"
+  },
+  "app.shortcut-settings.nav-lab-description": {
+    "message": "Jump to the Lab."
+  },
+  "app.shortcut-settings.nav-library": {
+    "message": "Library"
+  },
+  "app.shortcut-settings.nav-library-description": {
+    "message": "Jump to your library."
+  },
+  "app.shortcut-settings.nav-multiplayer": {
+    "message": "Multiplayer"
+  },
+  "app.shortcut-settings.nav-multiplayer-description": {
+    "message": "Jump to multiplayer."
+  },
+  "app.shortcut-settings.nav-settings": {
+    "message": "Settings"
+  },
+  "app.shortcut-settings.nav-settings-description": {
+    "message": "Jump to the settings."
+  },
+  "app.shortcut-settings.nav-skins": {
+    "message": "Skin selector"
+  },
+  "app.shortcut-settings.nav-skins-description": {
+    "message": "Jump to the skin selector."
+  },
+  "app.shortcut-settings.nav-title": {
+    "message": "Navigation shortcuts"
+  },
+  "app.shortcut-settings.nav-worlds": {
+    "message": "Worlds"
+  },
+  "app.shortcut-settings.nav-worlds-description": {
+    "message": "Jump to your worlds."
+  },
+  "app.shortcut-settings.page-down-action": {
+    "message": "Scroll down one screen"
+  },
+  "app.shortcut-settings.page-down-action-description": {
+    "message": "Moves the page you are reading down by one screen."
+  },
+  "app.shortcut-settings.page-up-action": {
+    "message": "Scroll up one screen"
+  },
+  "app.shortcut-settings.page-up-action-description": {
+    "message": "Moves the page you are reading up by one screen."
+  },
+  "app.shortcut-settings.scroll-description": {
+    "message": "Move through long pages with the keyboard."
+  },
+  "app.shortcut-settings.scroll-title": {
+    "message": "Quick scrolling"
   },
   "app.sidebar.collapse": {
     "message": "Collapse sidebar"
@@ -7871,6 +8570,12 @@
   "app.translation-settings.title": {
     "message": "Translation"
   },
+  "app.translation.auto-translate-hint.text": {
+    "message": "You can turn this on in Settings → Language & translation so browse results and project pages translate for you."
+  },
+  "app.translation.auto-translate-hint.title": {
+    "message": "Use automatic translation"
+  },
   "app.translation.error.authentication": {
     "message": "The translation service could not authenticate. Please try again later."
   },
@@ -7919,14 +8624,8 @@
   "app.update-announcement.version": {
     "message": "Version {version}"
   },
-  "app.update-popup.apt-update": {
-    "message": "Update"
-  },
   "app.update-popup.body.download-complete": {
     "message": "Axolotl Launcher v{version} has finished downloading. Reload to update now, or automatically when you close Axolotl Launcher."
-  },
-  "app.update-popup.body.linux": {
-    "message": "Axolotl Launcher v{version} is available. Use your package manager to update for the latest features and fixes!"
   },
   "app.update-popup.body.metered": {
     "message": "Axolotl Launcher v{version} is available now! Since you're on a metered network, we didn't automatically download it."
@@ -8321,14 +9020,11 @@
   "app.worlds.title": {
     "message": "Worlds"
   },
-  "create.back": {
-    "message": "Back to Library"
-  },
-  "create.pcl-hmcl-hint": {
-    "message": "Using PCL / HMCL?"
-  },
   "create.add-minecraft-folder": {
     "message": "Add .minecraft folder"
+  },
+  "create.back": {
+    "message": "Back to Library"
   },
   "create.import.description": {
     "message": "Import instances from other launchers or install a modpack."
@@ -8341,6 +9037,9 @@
   },
   "create.new.title": {
     "message": "Start Fresh"
+  },
+  "create.pcl-hmcl-hint": {
+    "message": "Using PCL / HMCL?"
   },
   "create.subtitle": {
     "message": "Start a new adventure or bring your existing worlds"
@@ -8789,14 +9488,14 @@
   "instance.settings.tabs.general.game-dir.description": {
     "message": "Uses a separate folder as the working directory for this instance. The game reads mods, saves, configs, and resource packs from that folder instead of the managed instance folder."
   },
+  "instance.settings.tabs.general.game-dir.external-note": {
+    "message": "This instance uses an external .minecraft folder managed in place."
+  },
   "instance.settings.tabs.general.game-dir.isolated": {
     "message": "Version isolated (stored in versions/)"
   },
   "instance.settings.tabs.general.game-dir.managed-note": {
     "message": "This instance uses the Axolotl-managed folder."
-  },
-  "instance.settings.tabs.general.game-dir.external-note": {
-    "message": "This instance uses an external .minecraft folder and manages files in place."
   },
   "instance.settings.tabs.general.game-dir.move-note": {
     "message": "Switching isolation only updates the launcher path. Move the mods, saves, and config folders yourself to match."
@@ -8953,6 +9652,15 @@
   },
   "instance.settings.tabs.window.height.enter": {
     "message": "Enter height..."
+  },
+  "instance.settings.tabs.window.maximize-window": {
+    "message": "Maximize window"
+  },
+  "instance.settings.tabs.window.maximize-window.description": {
+    "message": "Maximize the Minecraft window when launched."
+  },
+  "instance.settings.tabs.window.maximize-window.unsupported": {
+    "message": "Not supported on this operating system."
   },
   "instance.settings.tabs.window.width": {
     "message": "Width"
@@ -10126,6 +10834,30 @@
   },
   "minecraft-account.third-party-profile.title": {
     "message": "Select a profile"
+  },
+  "minecraft-login.browser": {
+    "message": "Use browser login"
+  },
+  "minecraft-login.device-code": {
+    "message": "Use device code"
+  },
+  "minecraft-login.device-description": {
+    "message": "Open the page below on any device, then enter this code."
+  },
+  "minecraft-login.device-expired": {
+    "message": "This device code expired. Start again to receive a new code."
+  },
+  "minecraft-login.device-starting": {
+    "message": "Requesting a device code..."
+  },
+  "minecraft-login.open-verification": {
+    "message": "Open verification page"
+  },
+  "minecraft-login.title": {
+    "message": "Sign in to Minecraft"
+  },
+  "minecraft-login.trouble": {
+    "message": "Having trouble?"
   },
   "project.actions.view-dependents": {
     "message": "View dependents"

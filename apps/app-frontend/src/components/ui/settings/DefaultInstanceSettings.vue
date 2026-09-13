@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { defineMessages, StyledInput, Toggle, useVIntl } from '@modrinth/ui'
+import { platform } from '@tauri-apps/plugin-os'
 import { ref, watch } from 'vue'
 
 import { get, set } from '@/helpers/settings.ts'
 
-import CrashAnalysisAISettings from './CrashAnalysisAISettings.vue'
+import LogShareSettings from './LogShareSettings.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSection from './SettingsSection.vue'
+import SharedLogsSettings from './SharedLogsSettings.vue'
 
 const { formatMessage } = useVIntl()
 
@@ -15,6 +17,18 @@ const messages = defineMessages({
 	fullscreenDescription: {
 		id: 'app.settings.defaults.fullscreen-description',
 		defaultMessage: 'Overwrites the options.txt file to start in full screen when launched.',
+	},
+	maximizeWindow: {
+		id: 'app.settings.defaults.maximize-window',
+		defaultMessage: 'Maximize window',
+	},
+	maximizeWindowDescription: {
+		id: 'app.settings.defaults.maximize-window-description',
+		defaultMessage: 'Maximize the Minecraft window when it starts.',
+	},
+	maximizeWindowUnsupported: {
+		id: 'app.settings.defaults.maximize-window.unsupported',
+		defaultMessage: 'Not supported on this operating system.',
 	},
 	width: { id: 'app.settings.defaults.width', defaultMessage: 'Width' },
 	widthDescription: {
@@ -92,6 +106,7 @@ const messages = defineMessages({
 })
 
 const fetchSettings = await get()
+const supportsMaximizeWindow = (await platform()) === 'windows'
 const settings = ref({
 	...fetchSettings,
 	envVars: fetchSettings.custom_env_vars.map((x) => x.join('=')).join(' '),
@@ -139,6 +154,27 @@ watch(
 				</template>
 				<template #description>{{ formatMessage(messages.fullscreenDescription) }}</template>
 				<template #control><Toggle id="fullscreen" v-model="settings.force_fullscreen" /></template>
+			</SettingsRow>
+			<SettingsRow>
+				<template #label>{{ formatMessage(messages.maximizeWindow) }}</template>
+				<template #description>
+					<span :class="{ 'text-secondary': !supportsMaximizeWindow }">
+						{{
+							formatMessage(
+								supportsMaximizeWindow
+									? messages.maximizeWindowDescription
+									: messages.maximizeWindowUnsupported,
+							)
+						}}
+					</span>
+				</template>
+				<template #control>
+					<Toggle
+						id="maximize-window"
+						v-model="settings.maximize_window"
+						:disabled="settings.force_fullscreen || !supportsMaximizeWindow"
+					/>
+				</template>
 			</SettingsRow>
 			<SettingsRow>
 				<template #label>{{ formatMessage(messages.width) }}</template>
@@ -278,6 +314,7 @@ watch(
 			</SettingsRow>
 		</SettingsSection>
 
-		<CrashAnalysisAISettings />
+		<LogShareSettings />
+		<SharedLogsSettings />
 	</div>
 </template>

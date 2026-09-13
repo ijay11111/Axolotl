@@ -8,12 +8,13 @@ use crate::install::{
     InstallProgressReporter,
 };
 use crate::instance::QuickPlayType;
+pub use crate::launcher::direct_link::ExternalGameDirMode;
 pub(crate) use crate::launcher::direct_link::{
     DirectLinkedLaunch, LinkedLauncherDialect, apply_hmcl_settings,
-    conservative_launch_facts, extract_linked_natives, hmcl_java_candidates,
-    hmcl_with_global_fallback, merged_to_version_info,
-    normalize_merged_loader_libraries, pcl_available_memory_gb,
-    pcl_ram_profile,
+    conservative_launch_facts, external_version_dir_for_game_override,
+    extract_linked_natives, hmcl_java_candidates, hmcl_with_global_fallback,
+    merged_to_version_info, normalize_merged_loader_libraries,
+    pcl_available_memory_gb, pcl_ram_profile,
 };
 use crate::launcher::download::{LocalRuntimeSource, download_log_config};
 use crate::launcher::instance_runtime::InstanceRuntimeAdapter;
@@ -626,33 +627,28 @@ async fn get_instance_full_path(
     Ok(full_path)
 }
 
-/// Writes downloaded version metadata and the client jar into a
-/// version-isolated external game directory. Shared artifacts remain in
+/// Writes downloaded version metadata and the client jar into the external
+/// `.minecraft/versions/<name>` directory. Shared artifacts remain in
 /// Axolotl's metadata cache, while the external root retains the conventional
-/// `.minecraft/versions/<name>/<name>.{json,jar}` structure.
+/// Minecraft version metadata structure.
 async fn materialize_external_version(
     instance: &Instance,
     version_id: &str,
     version_info: &VersionInfo,
     state: &State,
 ) -> crate::Result<()> {
-    let Some(game_dir_override) = instance.game_dir_override.as_deref() else {
+    let Some((version_dir, _)) =
+        external_version_dir_for_game_override(instance)
+    else {
         return Ok(());
     };
-    let version_dir = PathBuf::from(game_dir_override);
-    if !version_dir
-        .parent()
-        .and_then(Path::file_name)
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.eq_ignore_ascii_case("versions"))
-    {
-        return Ok(());
-    }
     let Some(version_name) =
         version_dir.file_name().and_then(|name| name.to_str())
     else {
         return Ok(());
     };
+
+    io::create_dir_all(&version_dir).await?;
 
     let mut serialized = serde_json::to_value(version_info)?;
     if let Some(object) = serialized.as_object_mut() {
@@ -674,18 +670,26 @@ async fn promote_external_instance_link(
     instance: &Instance,
     state: &State,
 ) -> crate::Result<()> {
-    if instance.is_direct_linked() {
+    // A symlink import can also carry a version-isolated game-dir override,
+    // but it still owns a managed profile entry. Promoting it would make the
+    // direct-link reconciler treat the external root as authoritative and
+    // eventually delete the imported instance when that root is not listed in
+    // Settings.
+    if !external_link_promotion_allowed(
+        instance.is_direct_linked(),
+        instance.symlink_target.as_deref(),
+    ) {
         return Ok(());
     }
-    let Some(game_dir_override) = instance.game_dir_override.as_deref() else {
-        return Ok(());
-    };
-    let Some(direct) = DirectLinkedLaunch::from_external_version_dir(
-        Path::new(game_dir_override),
-    )?
+    let Some(direct) = DirectLinkedLaunch::from_game_dir_override(instance)?
     else {
         return Ok(());
     };
+    let game_dir_mode = direct.game_dir_mode.ok_or_else(|| {
+        crate::ErrorKind::LauncherError(
+            "External instance link has no game-directory mode".to_string(),
+        )
+    })?;
     let root = direct.dot_minecraft.to_string_lossy().to_string();
     let version_json = direct
         .version_json
@@ -702,6 +706,7 @@ async fn promote_external_instance_link(
             dot_minecraft: Some(root.clone()),
             version_id: Some(direct.version_id.clone()),
             version_json_path: version_json,
+            game_dir_mode: Some(game_dir_mode.key().to_string()),
         },
         &mut tx,
     )
@@ -719,10 +724,153 @@ async fn promote_external_instance_link(
     Ok(())
 }
 
+fn external_link_promotion_allowed(
+    is_direct_linked: bool,
+    symlink_target: Option<&str>,
+) -> bool {
+    !is_direct_linked && symlink_target.is_none()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InstanceCompletionPolicy {
     FinalizeHere,
     DeferToInstallJob,
+}
+
+/// Serializes the small SQLite mutations performed by Minecraft core setup
+/// with modpack content registration. Network transfers and loader
+/// processors stay outside this guard. Cancellation can stop the semaphore
+/// wait, but an operation that has started is driven to a definitive result
+/// so callers never have to guess whether its transaction committed.
+async fn run_install_database_write<T>(
+    semaphore: &tokio::sync::Semaphore,
+    cancellation: &CancellationToken,
+    operation: impl std::future::Future<Output = crate::Result<T>>,
+) -> crate::Result<T> {
+    let _permit = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => {
+            return Err(crate::ErrorKind::OtherError(
+                "Minecraft install database write canceled".to_string(),
+            ).into());
+        }
+        permit = semaphore.acquire() => permit.map_err(|_| {
+            crate::ErrorKind::OtherError(
+                "install database semaphore closed".to_string(),
+            )
+        })?,
+    };
+    let result = operation.await;
+    if result.is_ok() && cancellation.is_cancelled() {
+        return Err(crate::ErrorKind::OtherError(
+            "Minecraft install database write canceled".to_string(),
+        )
+        .into());
+    }
+    result
+}
+
+#[cfg(test)]
+mod install_database_write_tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+    use tokio::sync::Semaphore;
+
+    #[tokio::test]
+    async fn minecraft_database_operation_starts_only_after_permit() {
+        let semaphore = Semaphore::new(0);
+        let cancellation = CancellationToken::new();
+        let operation_polled = Arc::new(AtomicBool::new(false));
+        let operation_flag = Arc::clone(&operation_polled);
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            run_install_database_write(&semaphore, &cancellation, async move {
+                operation_flag.store(true, Ordering::SeqCst);
+                Ok::<(), crate::Error>(())
+            }),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!operation_polled.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn minecraft_database_wait_is_cancelable() {
+        let semaphore = Semaphore::new(0);
+        let cancellation = CancellationToken::new();
+        let trigger = cancellation.clone();
+        let cancel_task = tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            trigger.cancel();
+        });
+
+        let error = tokio::time::timeout(
+            Duration::from_millis(100),
+            run_install_database_write(&semaphore, &cancellation, async {
+                Ok::<(), crate::Error>(())
+            }),
+        )
+        .await
+        .expect("database semaphore wait should stop on cancellation")
+        .unwrap_err();
+        cancel_task.await.unwrap();
+
+        assert!(error.to_string().contains("canceled"));
+    }
+
+    #[tokio::test]
+    async fn minecraft_database_operation_runs_with_permit() {
+        let semaphore = Semaphore::new(1);
+        let cancellation = CancellationToken::new();
+        let operation_polled = Arc::new(AtomicBool::new(false));
+        let operation_flag = Arc::clone(&operation_polled);
+
+        run_install_database_write(&semaphore, &cancellation, async move {
+            operation_flag.store(true, Ordering::SeqCst);
+            Ok::<(), crate::Error>(())
+        })
+        .await
+        .unwrap();
+
+        assert!(operation_polled.load(Ordering::SeqCst));
+        assert_eq!(semaphore.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn minecraft_database_cancellation_waits_for_started_operation() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let cancellation = CancellationToken::new();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let task_semaphore = Arc::clone(&semaphore);
+        let task_cancellation = cancellation.clone();
+        let task = tokio::spawn(async move {
+            run_install_database_write(
+                &task_semaphore,
+                &task_cancellation,
+                async move {
+                    let _ = started_tx.send(());
+                    let _ = finish_rx.await;
+                    Ok::<(), crate::Error>(())
+                },
+            )
+            .await
+        });
+
+        started_rx.await.unwrap();
+        cancellation.cancel();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!task.is_finished());
+
+        finish_tx.send(()).unwrap();
+        let error = task.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("canceled"));
+        assert_eq!(semaphore.available_permits(), 1);
+    }
 }
 
 pub(crate) async fn run_instance_install_command(
@@ -836,11 +984,19 @@ async fn install_minecraft_with_local_source(
     };
 
     let state = State::get().await?;
+    let database_cancellation = reporter
+        .as_ref()
+        .map(InstallProgressReporter::cancellation_token)
+        .unwrap_or_default();
 
-    crate::state::instances::commands::set_instance_install_stage(
-        &instance.id,
-        InstanceInstallStage::MinecraftInstalling,
-        &state.pool,
+    run_install_database_write(
+        &state.install_db_semaphore,
+        &database_cancellation,
+        crate::state::instances::commands::set_instance_install_stage(
+            &instance.id,
+            InstanceInstallStage::MinecraftInstalling,
+            &state.pool,
+        ),
     )
     .await?;
     emit_instance(&instance.id, InstancePayloadType::Edited).await?;
@@ -903,10 +1059,14 @@ async fn install_minecraft_with_local_source(
         )
         .await?;
 
-        crate::state::instances::commands::set_applied_content_set_loader_version(
-            &instance.id,
-            loader_version.as_ref().map(|x| x.id.as_str()),
-            &state.pool,
+        run_install_database_write(
+            &state.install_db_semaphore,
+            &database_cancellation,
+            crate::state::instances::commands::set_applied_content_set_loader_version(
+                &instance.id,
+                loader_version.as_ref().map(|x| x.id.as_str()),
+                &state.pool,
+            ),
         )
         .await?;
     }
@@ -993,7 +1153,12 @@ async fn install_minecraft_with_local_source(
         validate_loader_java_version(&version_info, &java_version)?;
 
         if set_java {
-            java_version.upsert(&state.pool).await?;
+            run_install_database_write(
+                &state.install_db_semaphore,
+                &database_cancellation,
+                java_version.upsert(&state.pool),
+            )
+            .await?;
         }
 
         Some(java_version)
@@ -1060,18 +1225,31 @@ async fn install_minecraft_with_local_source(
     let Some(java_version) = java_version else {
         let protocol_version =
             read_protocol_version_from_jar(client_path).await?;
-        crate::state::instances::commands::set_applied_content_set_protocol_version(
-            &instance.id,
-            protocol_version,
-            &state.pool,
+        run_install_database_write(
+            &state.install_db_semaphore,
+            &database_cancellation,
+            crate::state::instances::commands::set_applied_content_set_protocol_version(
+                &instance.id,
+                protocol_version,
+                &state.pool,
+            ),
         )
         .await?;
-        promote_external_instance_link(instance, &state).await?;
+        run_install_database_write(
+            &state.install_db_semaphore,
+            &database_cancellation,
+            promote_external_instance_link(instance, &state),
+        )
+        .await?;
         if completion_policy == InstanceCompletionPolicy::FinalizeHere {
-            crate::state::instances::commands::set_instance_install_stage(
-                &instance.id,
-                InstanceInstallStage::Installed,
-                &state.pool,
+            run_install_database_write(
+                &state.install_db_semaphore,
+                &database_cancellation,
+                crate::state::instances::commands::set_instance_install_stage(
+                    &instance.id,
+                    InstanceInstallStage::Installed,
+                    &state.pool,
+                ),
             )
             .await?;
             emit_instance(&instance.id, InstancePayloadType::Edited).await?;
@@ -1250,7 +1428,13 @@ async fn install_minecraft_with_local_source(
                         &libraries_dir,
                         &processor.args,
                         data,
-                    )?);
+                    )?)
+                    // Forge's installer processors resolve a few auxiliary
+                    // paths relative to the game root. Running them from the
+                    // launcher process directory can therefore exit
+                    // successfully while leaving the client output jars in
+                    // the wrong place (or not producing them at all).
+                    .current_dir(&instance_path);
                 let child = run_instance_install_command(
                     instance.id.clone(),
                     reporter
@@ -1308,18 +1492,31 @@ async fn install_minecraft_with_local_source(
 
     let protocol_version = read_protocol_version_from_jar(client_path).await?;
 
-    crate::state::instances::commands::set_applied_content_set_protocol_version(
-        &instance.id,
-        protocol_version,
-        &state.pool,
+    run_install_database_write(
+        &state.install_db_semaphore,
+        &database_cancellation,
+        crate::state::instances::commands::set_applied_content_set_protocol_version(
+            &instance.id,
+            protocol_version,
+            &state.pool,
+        ),
     )
     .await?;
-    promote_external_instance_link(instance, &state).await?;
+    run_install_database_write(
+        &state.install_db_semaphore,
+        &database_cancellation,
+        promote_external_instance_link(instance, &state),
+    )
+    .await?;
     if completion_policy == InstanceCompletionPolicy::FinalizeHere {
-        crate::state::instances::commands::set_instance_install_stage(
-            &instance.id,
-            InstanceInstallStage::Installed,
-            &state.pool,
+        run_install_database_write(
+            &state.install_db_semaphore,
+            &database_cancellation,
+            crate::state::instances::commands::set_instance_install_stage(
+                &instance.id,
+                InstanceInstallStage::Installed,
+                &state.pool,
+            ),
         )
         .await?;
         emit_instance(&instance.id, InstancePayloadType::Edited).await?;
@@ -1517,6 +1714,8 @@ pub async fn launch_minecraft(
     wrapper: &Option<String>,
     memory: &MemorySettings,
     resolution: &WindowSize,
+    maximize_window: bool,
+    launch_preparation_timeout: u64,
     credentials: &Credentials,
     post_exit_hook: Option<String>,
     context: &InstanceLaunchContext,
@@ -1549,6 +1748,23 @@ pub async fn launch_minecraft(
     let runtime =
         InstanceRuntimeAdapter::for_instance(instance, &state.directories)?;
     let direct_launch = runtime.direct_link().cloned();
+    if direct_launch.is_some() && !instance.is_direct_linked() {
+        // Instances created before direct-link metadata was introduced retain
+        // their external `game_dir_override`. Their adapter above already
+        // launches them in place; persist the resolved identity now so future
+        // launches, content scans, and settings all use the same external
+        // runtime. A persistence failure must not make an otherwise valid
+        // existing instance unlaunchable.
+        if let Err(error) =
+            promote_external_instance_link(instance, &state).await
+        {
+            tracing::warn!(
+                %error,
+                instance = %instance.id,
+                "Could not persist the migrated external instance link"
+            );
+        }
+    }
     let mut resolved_linked = direct_launch
         .as_ref()
         .map(DirectLinkedLaunch::resolve)
@@ -2229,6 +2445,15 @@ pub async fn launch_minecraft(
         )?
         .into_iter(),
     );
+    // Identify the launcher to Minecraft and mods consistently across every
+    // loader. Append these after profile-provided JVM arguments so custom
+    // arguments cannot accidentally replace the launcher's identity.
+    command
+        .arg("-Dminecraft.launcher.brand=Axolotl Launcher")
+        .arg(format!(
+            "-Dminecraft.launcher.version={}",
+            env!("CARGO_PKG_VERSION")
+        ));
 
     // The java launcher requires access to java.lang.reflect in order to force access in to
     // whatever module the main class is in
@@ -2254,6 +2479,8 @@ pub async fn launch_minecraft(
     }
 
     let launch_assets_dir = runtime.assets_dir(&state.directories);
+    let game_assets_dir = runtime
+        .game_assets_dir(&state.directories, version_info.assets == "legacy");
 
     command
         .arg("com.modrinth.theseus.MinecraftLaunch")
@@ -2268,6 +2495,7 @@ pub async fn launch_minecraft(
                 &version_info.asset_index.id,
                 &instance_path,
                 &launch_assets_dir,
+                &game_assets_dir,
                 &launch_version_type,
                 effective_resolution,
                 &java_version.architecture,
@@ -2392,6 +2620,8 @@ pub async fn launch_minecraft(
             &instance.name,
             command,
             post_exit_hook,
+            maximize_window,
+            launch_preparation_timeout,
             instance_path.clone(),
             logs_folder,
             version_info.logging.is_some(),
@@ -2967,5 +3197,19 @@ mod linked_rule_tests {
             &QuickPlayType::None,
             true
         ));
+    }
+
+    #[test]
+    fn symlink_profile_is_not_eligible_for_direct_link_promotion() {
+        assert!(!external_link_promotion_allowed(
+            false,
+            Some(r"D:\Minecraft\.minecraft"),
+        ));
+    }
+
+    #[test]
+    fn ordinary_external_override_remains_eligible_for_promotion() {
+        assert!(external_link_promotion_allowed(false, None));
+        assert!(!external_link_promotion_allowed(true, None));
     }
 }

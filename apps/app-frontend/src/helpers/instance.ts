@@ -82,7 +82,16 @@ export interface DirectLinkSyncReport {
 	errors: string[]
 }
 
-export async function sync_direct_links(roots: string[]): Promise<DirectLinkSyncReport> {
+export type ExternalMinecraftRootMode = 'isolated' | 'shared'
+
+export interface ExternalMinecraftRoot {
+	path: string
+	mode: ExternalMinecraftRootMode
+}
+
+export async function sync_direct_links(
+	roots: ExternalMinecraftRoot[],
+): Promise<DirectLinkSyncReport> {
 	return await invoke<DirectLinkSyncReport>('plugin:instance|instance_sync_direct_links', {
 		roots,
 	})
@@ -735,6 +744,21 @@ export async function queue_project_with_dependencies(
 		request,
 		displayTitle: display.title,
 		displayIcon: display.iconUrl ?? null,
+	})
+}
+
+export type InstallContentBatchItem =
+	| { type: 'modrinth'; project_id: string; version_id?: string; content_type: Labrinth.Content.v3.ContentType; selected?: unknown; excluded_project_ids?: string[]; force_project_ids?: string[] }
+	| { type: 'curse_forge'; request: unknown }
+	| { type: 'curse_forge_world'; request: unknown }
+
+export async function queue_content_batch(
+	instanceId: string,
+	items: InstallContentBatchItem[],
+	display: { title: string; iconUrl?: string | null },
+): Promise<InstallJobSnapshot> {
+	return await invoke('plugin:instance|instance_queue_content_batch', {
+		request: { instanceId, items, displayTitle: display.title, displayIcon: display.iconUrl ?? null },
 	})
 }
 

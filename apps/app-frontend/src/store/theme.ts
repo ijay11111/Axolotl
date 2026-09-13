@@ -1,5 +1,17 @@
 import { defineStore } from 'pinia'
 
+/**
+ * Mirrors `KeyBinding` from `@modrinth/ui`. Declared here so this module stays
+ * loadable without the UI package, which the settings tests rely on.
+ */
+export interface ShortcutBinding {
+	device: 'keyboard' | 'mouse'
+	code: string
+	mod: boolean
+	shift: boolean
+	alt: boolean
+}
+
 let systemThemeMq: MediaQueryList | null = null
 
 export const DEFAULT_FEATURE_FLAGS = {
@@ -22,13 +34,14 @@ export const DEFAULT_FEATURE_FLAGS = {
 
 export const THEME_OPTIONS = ['dark', 'light', 'oled', 'system'] as const
 export const ACCENT_COLOR_OPTIONS = ['pink', 'orange', 'green', 'blue', 'purple'] as const
+export const DEFAULT_CUSTOM_ACCENT_COLOR = '#db2777'
 
 export type FeatureFlag = keyof typeof DEFAULT_FEATURE_FLAGS
 export type FeatureFlags = Record<FeatureFlag, boolean>
 export type ColorTheme = (typeof THEME_OPTIONS)[number]
 export type AccentColor = (typeof ACCENT_COLOR_OPTIONS)[number]
 export type CustomAccentColor = `custom:#${string}`
-export type AccentColorSetting = AccentColor | CustomAccentColor
+export type AccentColorSetting = AccentColor | 'system' | CustomAccentColor
 export type HomeLayout = 'standard' | 'minimal'
 export type CloseBehavior = 'ask' | 'close' | 'lightweight'
 
@@ -83,6 +96,12 @@ export function hslToHex(h: number, s: number, l: number): string {
 	return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
+export function applySystemAccentHue(systemHex: string): string {
+	const { h } = hexToHsl(systemHex)
+	const { s, l } = hexToHsl(DEFAULT_CUSTOM_ACCENT_COLOR)
+	return hslToHex(h, s, l)
+}
+
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
 /**
@@ -103,6 +122,8 @@ export function deriveAccentVariants(hex: string): { light: string; dark: string
 export type ThemeStore = {
 	selectedTheme: ColorTheme
 	selectedAccentColor: AccentColorSetting
+	systemAccentColor: string | null
+	systemAccentSupported: boolean | null
 	advancedRendering: boolean
 	hideNametagSkinsPage: boolean
 	toggleSidebar: boolean
@@ -118,6 +139,29 @@ export type ThemeStore = {
 	minimalHomeInstanceId: string | null
 	closeBehavior: CloseBehavior
 
+	/** Whether the floating "back to top" button is shown on scrollable pages. */
+	showScrollTop: boolean
+	/** Whether quick scrolling shortcuts (Home/End/PageUp/PageDown) are active. */
+	quickScrollEnabled: boolean
+	/** Per-nav-item quick jump shortcuts (Ctrl/Cmd + number), off by default. */
+	shortcutNavHome: boolean
+	shortcutNavWorlds: boolean
+	shortcutNavDiscover: boolean
+	shortcutNavSkins: boolean
+	shortcutNavMultiplayer: boolean
+	shortcutNavLibrary: boolean
+	shortcutNavLab: boolean
+	shortcutNavDownloads: boolean
+	shortcutNavCreate: boolean
+	shortcutNavSettings: boolean
+
+	/**
+	 * The combination every shortcut answers to, keyed by action id. Kept here so
+	 * pages re-render when one is recorded; the value itself lives in local
+	 * storage, next to the enable flags.
+	 */
+	shortcutBindings: Record<string, ShortcutBinding>
+
 	devMode: boolean
 	featureFlags: FeatureFlags
 }
@@ -125,6 +169,8 @@ export type ThemeStore = {
 export const DEFAULT_THEME_STORE: ThemeStore = {
 	selectedTheme: 'dark',
 	selectedAccentColor: 'pink',
+	systemAccentColor: null,
+	systemAccentSupported: null,
 	advancedRendering: true,
 	hideNametagSkinsPage: false,
 	toggleSidebar: false,
@@ -139,6 +185,22 @@ export const DEFAULT_THEME_STORE: ThemeStore = {
 	homeLayout: 'standard',
 	minimalHomeInstanceId: null,
 	closeBehavior: 'ask',
+
+	showScrollTop: true,
+	quickScrollEnabled: false,
+
+	shortcutNavHome: false,
+	shortcutNavWorlds: false,
+	shortcutNavDiscover: false,
+	shortcutNavSkins: false,
+	shortcutNavMultiplayer: false,
+	shortcutNavLibrary: false,
+	shortcutNavLab: false,
+	shortcutNavDownloads: false,
+	shortcutNavCreate: false,
+	shortcutNavSettings: false,
+
+	shortcutBindings: {},
 
 	devMode: false,
 	featureFlags: DEFAULT_FEATURE_FLAGS,
@@ -158,6 +220,7 @@ export const useTheming = defineStore('themeStore', {
 		},
 		setAccentColor(newAccentColor: AccentColorSetting) {
 			if (
+				newAccentColor === 'system' ||
 				parseCustomAccentColor(newAccentColor) !== null ||
 				ACCENT_COLOR_OPTIONS.includes(newAccentColor as AccentColor)
 			) {
@@ -172,17 +235,38 @@ export const useTheming = defineStore('themeStore', {
 			}
 			html.classList.remove('accent-custom')
 
-			const customHex = parseCustomAccentColor(this.selectedAccentColor)
+			const customHex =
+				parseCustomAccentColor(this.selectedAccentColor) ??
+				(this.selectedAccentColor === 'system' ? this.systemAccentColor : null)
 			if (customHex) {
 				const variants = deriveAccentVariants(customHex)
 				html.style.setProperty('--custom-accent-light', variants.light)
 				html.style.setProperty('--custom-accent-dark', variants.dark)
 				html.classList.add('accent-custom')
+			} else if (this.selectedAccentColor === 'system') {
+				html.style.removeProperty('--custom-accent-light')
+				html.style.removeProperty('--custom-accent-dark')
+				html.classList.add('accent-pink')
 			} else {
 				html.style.removeProperty('--custom-accent-light')
 				html.style.removeProperty('--custom-accent-dark')
 				html.classList.add(`accent-${this.selectedAccentColor}`)
 			}
+		},
+		setSystemAccentColor(systemHex: string) {
+			if (!/^#[0-9a-fA-F]{6}$/.test(systemHex)) {
+				this.setSystemAccentUnavailable()
+				return
+			}
+
+			this.systemAccentColor = applySystemAccentHue(systemHex)
+			this.systemAccentSupported = true
+			if (this.selectedAccentColor === 'system') this.setAccentColor('system')
+		},
+		setSystemAccentUnavailable() {
+			this.systemAccentColor = null
+			this.systemAccentSupported = false
+			if (this.selectedAccentColor === 'system') this.setAccentColor('system')
 		},
 		setThemeClass() {
 			const html = document.getElementsByTagName('html')[0]

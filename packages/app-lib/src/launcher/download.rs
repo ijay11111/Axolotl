@@ -281,6 +281,11 @@ impl MinecraftDownloadProgress {
         current: u64,
         total: u64,
     ) -> crate::Result<()> {
+        // A zero total represents a fully cached/no-op Minecraft install.
+        // Persist it as a completed unit so parallel modpack progress does
+        // not remain indeterminate after the task returned successfully.
+        let (current, total) =
+            if total == 0 { (1, 1) } else { (current, total) };
         self.reporter
             .update(
                 InstallPhaseId::DownloadingMinecraft,
@@ -316,6 +321,13 @@ impl MinecraftDownloadProgress {
     }
 
     async fn finish(&self) -> crate::Result<()> {
+        // The initial missing-byte estimate can be stale when another install,
+        // a local runtime source, or a cache satisfies the file before this
+        // task reaches it. A successful Minecraft install is terminal for this
+        // progress track, so publish its total as complete instead of leaving
+        // a misleading `0/N` download bar behind.
+        let total = self.total.load(Ordering::Relaxed);
+        self.emit_progress(total, total).await?;
         let source = self.source.lock().ok().and_then(|source| source.clone());
         let fallback_count = self.fallback_count.load(Ordering::Relaxed);
         if let Some(source) = source {
@@ -631,7 +643,9 @@ pub(crate) fn is_native_library(library: &Library) -> bool {
 }
 
 /// Whether this library carries a Java artifact (regular JAR) that must be
-/// downloaded and placed on the classpath. A library can have both a Java
+/// downloaded. Processor dependencies are represented by libraries with
+/// `include_in_classpath` set to false, so that flag cannot be used to decide
+/// whether the artifact is needed. A library can also have both a Java
 /// artifact and native classifiers after manifest merging (LWJGL is the
 /// canonical example); the two are independent and must not be treated as
 /// mutually exclusive.
@@ -646,20 +660,29 @@ pub(crate) fn needs_java_artifact(library: &Library) -> bool {
     }
     // Legacy pure-native libraries carry a natives map but no downloads.artifact;
     // their main JAR is not downloaded by the original installer either.
-    let artifact = library
-        .downloads
-        .as_ref()
-        .and_then(|downloads| downloads.artifact.as_ref());
-    let legacy_url =
-        library.url.as_deref().filter(|url| !url.trim().is_empty());
     if library.natives.is_some()
-        && artifact.is_none_or(|artifact| artifact.url.trim().is_empty())
-        && legacy_url.is_none()
+        && library
+            .downloads
+            .as_ref()
+            .and_then(|downloads| downloads.artifact.as_ref())
+            .is_none_or(|artifact| artifact.url.trim().is_empty())
+        && library
+            .url
+            .as_deref()
+            .is_none_or(|url| url.trim().is_empty())
     {
         return false;
     }
-    artifact.is_some_and(|artifact| !artifact.url.trim().is_empty())
-        || legacy_url.is_some()
+    library
+        .downloads
+        .as_ref()
+        .and_then(|downloads| downloads.artifact.as_ref())
+        .is_some_and(|artifact| !artifact.url.trim().is_empty())
+        || library
+            .url
+            .as_deref()
+            .is_some_and(|url| !url.trim().is_empty())
+        || library.include_in_classpath
 }
 
 fn java_artifact_applies(
@@ -1315,7 +1338,9 @@ async fn write_version_info(path: &Path, data: Vec<u8>) -> crate::Result<()> {
 // Bumped when profile merge semantics change. This forces existing loader
 // caches to be regenerated so duplicate Forge/vanilla libraries regain native
 // classifier metadata.
-const DERIVED_VERSION_CACHE_FORMAT: &str = "2";
+// Bump this marker when derived loader metadata changes in a way that requires
+// rebuilding cached versions and re-extracting installer artifacts.
+const DERIVED_VERSION_CACHE_FORMAT: &str = "3";
 
 fn derived_version_cache_marker_path(path: &Path) -> PathBuf {
     path.with_extension("json.axolotl-format")
@@ -1679,6 +1704,32 @@ fn build_fallback_asset_from_batch(item: H2BatchAsset) -> FallbackAsset {
     }
 }
 
+/// Coalesce every fallback that writes the same physical object. This is
+/// especially important for legacy indexes, where several logical names can
+/// share one hash: concurrent local-reuse tasks would otherwise race on the
+/// same `.part` and destination paths.
+fn coalesce_fallback_assets(items: Vec<FallbackAsset>) -> Vec<FallbackAsset> {
+    let mut positions: HashMap<(PathBuf, String, u64), usize> = HashMap::new();
+    let mut coalesced: Vec<FallbackAsset> = Vec::new();
+    for mut item in items {
+        let key = (item.resource_path.clone(), item.hash.clone(), item.size);
+        if let Some(&position) = positions.get(&key) {
+            let existing = &mut coalesced[position];
+            existing.logical_items =
+                existing.logical_items.saturating_add(item.logical_items);
+            for legacy in item.legacy_resource_paths.drain(..) {
+                if !existing.legacy_resource_paths.contains(&legacy) {
+                    existing.legacy_resource_paths.push(legacy);
+                }
+            }
+        } else {
+            positions.insert(key, coalesced.len());
+            coalesced.push(item);
+        }
+    }
+    coalesced
+}
+
 /// Coalesce index aliases that refer to one physical object. The key includes
 /// the destination and full integrity contract so unrelated artifacts can
 /// never share a writer. Legacy paths remain separate outputs of that single
@@ -1928,6 +1979,7 @@ pub async fn download_assets(
     // Per-file fallback path: local runtime reuse, no batch route, or batch
     // failures. Runs concurrently (same budget as the original scheduler) so
     // import flows are not serialised.
+    let fallback_assets = coalesce_fallback_assets(fallback_assets);
     if !fallback_assets.is_empty() {
         let limit = crate::util::download::task_concurrency_limit(st)
             .map(|limit| limit.saturating_mul(2))
@@ -2654,6 +2706,64 @@ mod tests {
     }
 
     #[test]
+    fn fallback_assets_coalesce_aliases_and_keep_legacy_targets() {
+        let destination = PathBuf::from("assets/objects/85/hash");
+        let first_legacy = PathBuf::from("resources/sound/liquid/splash2.ogg");
+        let second_legacy =
+            PathBuf::from("resources/sounds/liquid/splash2.ogg");
+        let make_item = |name: &str, legacy_resource_paths: Vec<PathBuf>| {
+            FallbackAsset {
+                name: name.into(),
+                hash: "857abbbfb58186c2f1b5510a4072630950e518f6".into(),
+                size: 36_747,
+            url: "https://resources.download.minecraft.net/85/857abbbfb58186c2f1b5510a4072630950e518f6".into(),
+            resource_path: destination.clone(),
+                legacy_resource_paths,
+                logical_items: 1,
+            }
+        };
+
+        let items = coalesce_fallback_assets(vec![
+            make_item("sound/liquid/splash2.ogg", vec![first_legacy.clone()]),
+            make_item(
+                "sounds/liquid/splash2.ogg",
+                vec![second_legacy.clone(), first_legacy.clone()],
+            ),
+        ]);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].logical_items, 2);
+        assert_eq!(
+            items[0].legacy_resource_paths,
+            vec![first_legacy, second_legacy]
+        );
+    }
+
+    #[test]
+    fn fallback_assets_do_not_coalesce_different_integrity_contracts() {
+        let destination = PathBuf::from("assets/objects/85/object");
+        let make_item = |hash: &str, size| FallbackAsset {
+            name: hash.into(),
+            hash: hash.into(),
+            size,
+            url: format!("https://resources.download.minecraft.net/85/{hash}"),
+            resource_path: destination.clone(),
+            legacy_resource_paths: Vec::new(),
+            logical_items: 1,
+        };
+
+        assert_eq!(
+            coalesce_fallback_assets(vec![
+                make_item("first", 42),
+                make_item("second", 42),
+                make_item("first", 43),
+            ])
+            .len(),
+            3
+        );
+    }
+
+    #[test]
     fn batch_fallback_restores_official_asset_route_after_mirror_failure() {
         let official = "https://resources.download.minecraft.net/14/14b3534e2622470a71dbe69474c15e6a233cc1c6";
         let item = H2BatchAsset {
@@ -2820,6 +2930,42 @@ mod tests {
         .unwrap();
 
         assert!(needs_java_artifact(&library));
+    }
+
+    #[test]
+    fn processor_dependency_without_classpath_flag_keeps_java_artifact_task() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "net.neoforged.installertools:installertools:2.1.2",
+            "downloads": {"artifact": {
+                "url": "https://maven.neoforged.net/releases/net/neoforged/installertools/installertools/2.1.2/installertools-2.1.2.jar",
+                "sha1": "", "size": 1
+            }},
+            "include_in_classpath": false,
+            "downloadable": true
+        }))
+        .unwrap();
+
+        assert!(needs_java_artifact(&library));
+        assert!(java_artifact_applies(&library, "x86_64", true));
+    }
+
+    #[test]
+    fn legacy_launchwrapper_without_download_metadata_is_downloaded() {
+        let library: Library = serde_json::from_value(serde_json::json!({
+            "name": "net.minecraft:launchwrapper:1.12"
+        }))
+        .unwrap();
+
+        let artifact_path = d::get_path_from_artifact(&library.name).unwrap();
+        assert!(needs_java_artifact(&library));
+        assert_eq!(
+            legacy_library_download_urls(
+                library.url.as_deref(),
+                &artifact_path
+            )
+            .unwrap(),
+            vec![format!("{LIBRARIES_MAVEN}/{artifact_path}")]
+        );
     }
 
     #[test]

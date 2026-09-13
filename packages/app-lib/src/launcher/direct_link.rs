@@ -12,9 +12,75 @@ use daedalus::minecraft::{
 use daedalus::modded::normalize_loader_libraries;
 
 use super::local_version::{
-    HmclVersionSettings, LinkedLibrary, MergedVersion, load_version_for_dialect,
+    HmclVersionSettings, LinkedLibrary, MergedVersion, discover_version_json,
+    load_version_for_dialect,
 };
 use crate::state::{Instance, MemorySettings, ModLoader, WindowSize};
+
+/// Selects where a conventional external `.minecraft` installation stores
+/// instance-owned content. `Automatic` is retained only for legacy links and
+/// follows the owning launcher's original configuration.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalGameDirMode {
+    Automatic,
+    Isolated,
+    Shared,
+}
+
+impl ExternalGameDirMode {
+    pub fn parse(value: &str) -> crate::Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "automatic" => Ok(Self::Automatic),
+            "isolated" => Ok(Self::Isolated),
+            "shared" => Ok(Self::Shared),
+            value => Err(crate::ErrorKind::LauncherError(format!(
+                "Unsupported external Minecraft directory mode: {value}"
+            ))
+            .into()),
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::Isolated => "isolated",
+            Self::Shared => "shared",
+        }
+    }
+}
+
+/// Returns the conventional version-metadata directory for an ordinary
+/// instance created against an external `.minecraft` root. The game working
+/// directory may be either this version directory or the root itself.
+pub(crate) fn external_version_dir_for_game_override(
+    instance: &Instance,
+) -> Option<(PathBuf, ExternalGameDirMode)> {
+    let game_dir_override = instance.game_dir_override.as_deref()?;
+    let game_dir = PathBuf::from(game_dir_override);
+
+    if game_dir
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("versions"))
+    {
+        return Some((game_dir, ExternalGameDirMode::Isolated));
+    }
+
+    game_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case(".minecraft"))
+        .then(|| {
+            (
+                game_dir.join("versions").join(&instance.name),
+                ExternalGameDirMode::Shared,
+            )
+        })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkedLauncherDialect {
@@ -46,6 +112,7 @@ pub(crate) struct DirectLinkedLaunch {
     pub version_id: String,
     pub version_json: Option<PathBuf>,
     pub dialect: LinkedLauncherDialect,
+    pub game_dir_mode: Option<ExternalGameDirMode>,
 }
 
 pub(crate) struct ResolvedLinkedLaunch {
@@ -61,7 +128,7 @@ impl DirectLinkedLaunch {
     pub(crate) fn from_external_version_dir(
         version_dir: &Path,
     ) -> crate::Result<Option<Self>> {
-        let Some(version_id) =
+        let Some(folder_name) =
             version_dir.file_name().and_then(|name| name.to_str())
         else {
             return Ok(None);
@@ -78,14 +145,50 @@ impl DirectLinkedLaunch {
         else {
             return Ok(None);
         };
-        let version_json = version_dir.join(version_id.to_string() + ".json");
+        // Older externally-created records contain only `game_dir_override`.
+        // Do not assume their display folder and manifest stem match: PCL and
+        // copied installations commonly keep a user-facing folder name while
+        // the actual JSON is named after the version ID. Resolving the exact
+        // manifest here keeps those rows on the external runtime adapter,
+        // instead of later falling back to Axolotl's managed libraries.
+        let version_json = discover_version_json(dot_minecraft, folder_name)?;
+        let version_id = version_json
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| !stem.is_empty())
+            .ok_or_else(|| {
+                crate::ErrorKind::InputError(format!(
+                    "Version JSON has no usable file stem: {}",
+                    version_json.display()
+                ))
+            })?;
         Ok(Some(Self {
             dot_minecraft: crate::util::io::canonicalize(dot_minecraft)?,
             launcher_root: None,
             version_id: version_id.to_string(),
-            version_json: Some(version_json),
+            version_json: Some(crate::util::io::canonicalize(version_json)?),
             dialect: LinkedLauncherDialect::Generic,
+            game_dir_mode: Some(ExternalGameDirMode::Isolated),
         }))
+    }
+
+    /// Builds a direct link for a newly created external instance before its
+    /// link metadata has been persisted. This handles both the conventional
+    /// version-isolated override and the shared `.minecraft` root override.
+    pub(crate) fn from_game_dir_override(
+        instance: &Instance,
+    ) -> crate::Result<Option<Self>> {
+        let Some((version_dir, game_dir_mode)) =
+            external_version_dir_for_game_override(instance)
+        else {
+            return Ok(None);
+        };
+        let Some(mut direct) = Self::from_external_version_dir(&version_dir)?
+        else {
+            return Ok(None);
+        };
+        direct.game_dir_mode = Some(game_dir_mode);
+        Ok(Some(direct))
     }
 
     pub(crate) fn from_instance(
@@ -133,6 +236,11 @@ impl DirectLinkedLaunch {
                 .as_deref()
                 .map(PathBuf::from),
             dialect: LinkedLauncherDialect::parse(launcher)?,
+            game_dir_mode: instance
+                .linked_game_dir_mode
+                .as_deref()
+                .map(ExternalGameDirMode::parse)
+                .transpose()?,
         }))
     }
 
@@ -143,25 +251,29 @@ impl DirectLinkedLaunch {
             self.version_json.as_deref(),
             self.dialect,
         )?;
-        let game_dir = match self.dialect {
-            LinkedLauncherDialect::Pcl | LinkedLauncherDialect::PclCe => {
-                resolve_pcl_game_dir(
+        let game_dir = match self.game_dir_mode {
+            Some(ExternalGameDirMode::Isolated) => self.version_dir(),
+            Some(ExternalGameDirMode::Shared) => self.dot_minecraft.clone(),
+            Some(ExternalGameDirMode::Automatic) | None => match self.dialect {
+                LinkedLauncherDialect::Pcl | LinkedLauncherDialect::PclCe => {
+                    resolve_pcl_game_dir(
+                        &self.dot_minecraft,
+                        &self.version_dir(),
+                        self.dialect,
+                        &merged,
+                        self.launcher_root.as_deref(),
+                    )?
+                }
+                LinkedLauncherDialect::Hmcl => resolve_hmcl_game_dir(
+                    self.launcher_root.as_deref(),
                     &self.dot_minecraft,
                     &self.version_dir(),
-                    self.dialect,
-                    &merged,
-                    self.launcher_root.as_deref(),
-                )?
-            }
-            LinkedLauncherDialect::Hmcl => resolve_hmcl_game_dir(
-                self.launcher_root.as_deref(),
-                &self.dot_minecraft,
-                &self.version_dir(),
-            )?,
-            // A generic direct link is the `.minecraft/versions/<id>` format;
-            // its content is always isolated beside the version metadata,
-            // including when the directory is currently empty.
-            LinkedLauncherDialect::Generic => self.version_dir(),
+                )?,
+                // A generic direct link is the `.minecraft/versions/<id>` format;
+                // its content is always isolated beside the version metadata,
+                // including when the directory is currently empty.
+                LinkedLauncherDialect::Generic => self.version_dir(),
+            },
         };
         Ok(ResolvedLinkedLaunch { merged, game_dir })
     }
@@ -1821,6 +1933,39 @@ mod tests {
     }
 
     #[test]
+    fn legacy_external_version_override_uses_the_actual_manifest_stem() {
+        let root = tempfile::tempdir().unwrap();
+        let version_dir = root.path().join("versions").join("My Instance");
+        std::fs::create_dir_all(&version_dir).unwrap();
+        std::fs::write(
+            version_dir.join("1.20.1-fabric.json"),
+            serde_json::to_vec(&json!({
+                "id": "1.20.1-fabric",
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let direct =
+            DirectLinkedLaunch::from_external_version_dir(&version_dir)
+                .unwrap()
+                .expect("a conventional versions directory is external");
+
+        assert_eq!(direct.version_id, "1.20.1-fabric");
+        assert_eq!(
+            direct.version_json,
+            Some(
+                version_dir
+                    .join("1.20.1-fabric.json")
+                    .canonicalize()
+                    .unwrap()
+            )
+        );
+        assert_eq!(direct.dot_minecraft, root.path().canonicalize().unwrap());
+    }
+
+    #[test]
     fn pcl_instance_configs_select_exact_game_directory() {
         let root = tempfile::tempdir().unwrap();
         let version = root.path().join("versions/demo");
@@ -1885,8 +2030,46 @@ mod tests {
             version_id: "demo".to_string(),
             version_json: Some(version.join("demo.json")),
             dialect: LinkedLauncherDialect::Generic,
+            game_dir_mode: None,
         };
         assert_eq!(direct.resolve().unwrap().game_dir, version);
+    }
+
+    #[test]
+    fn explicit_external_root_mode_overrides_pcl_configuration() {
+        let root = tempfile::tempdir().unwrap();
+        let version = root.path().join("versions/demo");
+        std::fs::create_dir_all(version.join("PCL")).unwrap();
+        std::fs::write(
+            version.join("PCL/config.v1.yml"),
+            "VersionArgumentIndieV2: true\n",
+        )
+        .unwrap();
+        std::fs::write(
+            version.join("demo.json"),
+            serde_json::to_vec(&json!({
+                "id": "demo",
+                "mainClass": "net.minecraft.client.main.Main"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let shared = DirectLinkedLaunch {
+            dot_minecraft: root.path().to_path_buf(),
+            launcher_root: None,
+            version_id: "demo".to_string(),
+            version_json: Some(version.join("demo.json")),
+            dialect: LinkedLauncherDialect::PclCe,
+            game_dir_mode: Some(ExternalGameDirMode::Shared),
+        };
+        let isolated = DirectLinkedLaunch {
+            game_dir_mode: Some(ExternalGameDirMode::Isolated),
+            ..shared.clone()
+        };
+
+        assert_eq!(shared.resolve().unwrap().game_dir, root.path());
+        assert_eq!(isolated.resolve().unwrap().game_dir, version);
     }
 
     #[test]
@@ -1995,6 +2178,7 @@ mod tests {
             version_id: "logical-id".to_string(),
             version_json: Some(version_json),
             dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
         };
 
         assert_eq!(direct.version_dir(), root.path().join("versions/folder"));
@@ -2041,6 +2225,7 @@ mod tests {
             version_id: "demo".to_string(),
             version_json: None,
             dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
         };
         let target = root.path().join("axolotl-cache");
         extract_linked_natives(
@@ -2087,6 +2272,7 @@ mod tests {
             version_id: "demo".to_string(),
             version_json: None,
             dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
         };
         let target = root.path().join("axolotl-cache");
         extract_linked_natives(
@@ -2236,6 +2422,7 @@ mod tests {
             version_id: version_id.to_string(),
             version_json: None,
             dialect,
+            game_dir_mode: None,
         }
     }
 
@@ -2825,6 +3012,7 @@ mod tests {
             version_id: version_id.to_string(),
             version_json: None,
             dialect: LinkedLauncherDialect::Generic,
+            game_dir_mode: None,
         }
         .resolve()
         .unwrap()
@@ -2907,6 +3095,7 @@ mod tests {
             version_id: "1.12.2-Cleanroom-0.6.11-alpha".to_string(),
             version_json: None,
             dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
         }
         .resolve()
         .unwrap();
@@ -3217,6 +3406,7 @@ mod tests {
             version_id: "1.12.2".to_string(),
             version_json: None,
             dialect: LinkedLauncherDialect::Hmcl,
+            game_dir_mode: None,
         };
         let lwjgl3_library: LinkedLibrary = serde_json::from_value(json!({
             "name": "org.lwjgl:lwjgl:3.4.1-unsafe",

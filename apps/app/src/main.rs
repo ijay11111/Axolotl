@@ -5,7 +5,7 @@
 #![recursion_limit = "256"]
 
 use native_dialog::{DialogBuilder, MessageLevel};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::{
     env, fs,
@@ -25,13 +25,6 @@ mod lightweight_mode;
 mod mod_translation;
 mod portable;
 mod seed_map;
-
-#[derive(Default, Deserialize, Serialize)]
-struct UpdateChannelState {
-    active_channel: Option<String>,
-    immediate_update_fetch: Option<bool>,
-    updates_paused: Option<bool>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +206,46 @@ async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
     tracing::info!("Initializing app state...");
     State::init(app.config().identifier.clone()).await?;
 
+    // The logger starts before the database is available, so the stored level
+    // is applied here once settings can be read. Beta keeps enough detail for
+    // diagnostics by requiring DEBUG or TRACE.
+    match theseus::settings::get().await {
+        Ok(mut settings) => {
+            match resolve_update_channel(&app).await {
+                Ok(channel) => {
+                    let log_level = api::settings::log_level_for_channel(
+                        &channel,
+                        &settings.log_level,
+                    );
+                    if log_level != settings.log_level {
+                        settings.log_level = log_level;
+                        if let Err(error) =
+                            theseus::settings::set(settings.clone()).await
+                        {
+                            tracing::warn!(
+                                "Could not save the Beta log level: {error}"
+                            );
+                        }
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "Could not resolve the update channel: {error}"
+                    );
+                }
+            }
+
+            if std::env::var_os("RUST_LOG").is_none()
+                && let Err(error) = theseus::set_log_level(&settings.log_level)
+            {
+                tracing::warn!("Keeping the default log level: {error}");
+            }
+        }
+        Err(error) => {
+            tracing::warn!("Could not read the stored log level: {error}");
+        }
+    }
+
     let state = State::get().await?;
     app.asset_protocol_scope()
         .allow_directory(state.directories.caches_dir(), true)?;
@@ -233,10 +266,18 @@ async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
 }
 
 #[tauri::command]
-fn get_update_channel(app: tauri::AppHandle) -> api::Result<String> {
-    let channel = read_update_channel_state(&app)?
+async fn get_update_channel(app: tauri::AppHandle) -> api::Result<String> {
+    resolve_update_channel(&app).await
+}
+
+async fn resolve_update_channel<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> api::Result<String> {
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let state = theseus::read_update_channel_state(&settings_dir).await?;
+    let channel = state
         .active_channel
-        .unwrap_or_else(|| "release".to_string());
+        .unwrap_or_else(|| theseus::default_update_channel().to_string());
 
     match channel.as_str() {
         "release" | "beta" => Ok(channel),
@@ -258,7 +299,7 @@ async fn get_current_app_database_path(
 }
 
 #[tauri::command]
-fn set_update_channel(
+async fn set_update_channel(
     app: tauri::AppHandle,
     channel: String,
 ) -> api::Result<()> {
@@ -269,18 +310,23 @@ fn set_update_channel(
         .into());
     }
 
-    let mut state = read_update_channel_state(&app)?;
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let mut state = theseus::read_update_channel_state(&settings_dir).await?;
     state.active_channel = Some(channel);
-    write_update_channel_state(&app, &state)?;
-    Ok(())
+    write_update_channel_state(&app, &state)
 }
 
 #[tauri::command]
-fn get_update_preferences(
+async fn get_update_preferences(
     app: tauri::AppHandle,
 ) -> api::Result<UpdatePreferences> {
-    let state = read_update_channel_state(&app)?;
-    let is_beta = state.active_channel.as_deref() == Some("beta");
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let state = theseus::read_update_channel_state(&settings_dir).await?;
+    let is_beta = match state.active_channel.as_deref() {
+        Some("beta") => true,
+        Some("release") => false,
+        _ => theseus::default_update_channel() == "beta",
+    };
     Ok(UpdatePreferences {
         immediate_update_fetch: is_beta
             || state.immediate_update_fetch.unwrap_or(false),
@@ -289,56 +335,37 @@ fn get_update_preferences(
 }
 
 #[tauri::command]
-fn set_update_preferences(
+async fn set_update_preferences(
     app: tauri::AppHandle,
     immediate_update_fetch: bool,
     updates_paused: bool,
 ) -> api::Result<()> {
-    let mut state = read_update_channel_state(&app)?;
+    let settings_dir = update_channel_settings_dir(&app)?;
+    let mut state = theseus::read_update_channel_state(&settings_dir).await?;
     state.immediate_update_fetch = Some(immediate_update_fetch);
     state.updates_paused = Some(updates_paused);
     write_update_channel_state(&app, &state)
 }
 
-fn update_channel_state_path(app: &tauri::AppHandle) -> api::Result<PathBuf> {
-    let settings_dir = theseus::DirectoryInfo::initial_settings_dir_path(
-        &app.config().identifier,
-    )
-    .ok_or_else(|| {
-        theseus::Error::from(theseus::ErrorKind::FSError(
-            "Could not find update channel settings directory".to_string(),
-        ))
-    })?;
-    Ok(settings_dir.join("update-channel.json"))
-}
-
-fn read_update_channel_state(
-    app: &tauri::AppHandle,
-) -> api::Result<UpdateChannelState> {
-    let path = update_channel_state_path(app)?;
-    match std::fs::read_to_string(path) {
-        Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
-            theseus::Error::from(theseus::ErrorKind::OtherError(
-                error.to_string(),
+fn update_channel_settings_dir<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> api::Result<PathBuf> {
+    theseus::DirectoryInfo::initial_settings_dir_path(&app.config().identifier)
+        .ok_or_else(|| {
+            theseus::Error::from(theseus::ErrorKind::FSError(
+                "Could not find update channel settings directory".to_string(),
             ))
             .into()
-        }),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(UpdateChannelState::default())
-        }
-        Err(error) => Err(error.into()),
-    }
+        })
 }
 
 fn write_update_channel_state(
     app: &tauri::AppHandle,
-    state: &UpdateChannelState,
+    state: &theseus::UpdateChannelState,
 ) -> api::Result<()> {
-    let path = update_channel_state_path(app)?;
-    let settings_dir = path
-        .parent()
-        .expect("Update channel state path has a parent directory");
-    std::fs::create_dir_all(settings_dir)?;
+    let settings_dir = update_channel_settings_dir(app)?;
+    let path = theseus::update_channel_state_file_path(&settings_dir);
+    std::fs::create_dir_all(&settings_dir)?;
     let temporary_path = settings_dir.join("update-channel.json.tmp");
     let contents = serde_json::to_vec(state).map_err(|error| {
         theseus::Error::from(theseus::ErrorKind::OtherError(error.to_string()))
@@ -830,6 +857,7 @@ fn main() {
         .plugin(api::planet_minecraft::init())
         .plugin(api::settings::init())
         .plugin(api::storage::init())
+        .plugin(api::system_accent::init())
         .plugin(api::seed_map::init())
         .plugin(api::schematic_preview::init())
         .plugin(api::shortcuts::init())

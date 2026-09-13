@@ -252,19 +252,42 @@
 						full-width
 						:progress="jobPercent(job)"
 						:max="100"
+						:color="progressColor(job)"
 						:label="progressText(job)"
-						:waiting="job.status === 'queued' || !hasDeterminateProgress(job)"
+						:waiting="!isFinished(job) && (job.status === 'queued' || !hasDeterminateProgress(job))"
 						show-progress
-					/>
+					>
+						<template #progress-icon>
+							<CheckCircleIcon
+								v-if="isMainTrackComplete(job)"
+								class="size-5 text-green"
+								aria-hidden="true"
+							/>
+							<SpinnerIcon v-else class="size-5 animate-spin" aria-hidden="true" />
+						</template>
+					</ProgressBar>
 					<div v-if="job.parallel" class="mt-2">
 						<ProgressBar
 							full-width
 							:progress="parallelPercent(job)"
 							:max="100"
+							:color="parallelProgressColor(job)"
 							:label="parallelProgressText(job)"
-							:waiting="job.status === 'queued' || !hasDeterminateParallelProgress(job)"
+							:waiting="
+								!isFinished(job) &&
+								(job.status === 'queued' || !hasDeterminateParallelProgress(job))
+							"
 							show-progress
-						/>
+						>
+							<template #progress-icon>
+								<CheckCircleIcon
+									v-if="isParallelTrackComplete(job)"
+									class="size-5 text-green"
+									aria-hidden="true"
+								/>
+								<SpinnerIcon v-else class="size-5 animate-spin" aria-hidden="true" />
+							</template>
+						</ProgressBar>
 					</div>
 				</div>
 
@@ -402,6 +425,7 @@ import {
 	PlusIcon,
 	RefreshCwIcon,
 	SearchIcon,
+	SpinnerIcon,
 	TrashIcon,
 	XIcon,
 } from '@modrinth/assets'
@@ -559,7 +583,7 @@ const messages = defineMessages({
 	},
 	itemProgress: { id: 'app.downloads.item-progress', defaultMessage: 'Downloaded' },
 	manualDownload: {
-		id: 'app.curseforge.manual-downloads.open',
+		id: 'app.downloads.open-manual-download',
 		defaultMessage: 'Open',
 	},
 	manualDownloadRequired: {
@@ -567,7 +591,7 @@ const messages = defineMessages({
 		defaultMessage: 'CurseForge requires this file to be downloaded manually.',
 	},
 	projectFile: {
-		id: 'app.curseforge.manual-downloads.project-file',
+		id: 'app.downloads.manual-download-project-file',
 		defaultMessage: 'Project {projectId} · File {fileId}',
 	},
 	downloadSource: { id: 'app.downloads.download-source', defaultMessage: 'Source: {source}' },
@@ -625,9 +649,21 @@ const statusMessages = defineMessages({
 	canceled: { id: 'app.downloads.status.canceled', defaultMessage: 'Canceled' },
 	completed: { id: 'app.downloads.item-status.completed', defaultMessage: 'Completed' },
 	skipped: { id: 'app.downloads.item-status.skipped', defaultMessage: 'Skipped' },
+	worker_started: { id: 'app.downloads.item-status.worker-started', defaultMessage: 'Starting' },
 	downloading: { id: 'app.downloads.item-status.downloading', defaultMessage: 'Downloading' },
+	connecting: { id: 'app.downloads.item-status.connecting', defaultMessage: 'Connecting' },
+	waiting_for_resource: {
+		id: 'app.downloads.item-status.waiting-for-resource',
+		defaultMessage: 'Waiting for download resources',
+	},
 	verifying: { id: 'app.downloads.item-status.verifying', defaultMessage: 'Verifying' },
 	writing: { id: 'app.downloads.item-status.writing', defaultMessage: 'Writing' },
+	metadata: { id: 'app.downloads.item-status.metadata', defaultMessage: 'Loading metadata' },
+	waiting_for_database: {
+		id: 'app.downloads.item-status.waiting-for-database',
+		defaultMessage: 'Waiting for database',
+	},
+	finalizing: { id: 'app.downloads.item-status.finalizing', defaultMessage: 'Finalizing' },
 })
 
 const phaseMessages = defineMessages({
@@ -821,10 +857,7 @@ function jobPhaseLabel(job: InstallJobSnapshot) {
 	if (job.rollback_error) return formatMessage(messages.cleanupIncomplete)
 	// Older queued content jobs were initialized with the generic instance phase.
 	// Keep their label meaningful while they are resumed or waiting for the worker.
-	if (
-		job.kind === 'install_content' &&
-		job.phase === 'preparing_instance'
-	) {
+	if (job.kind === 'install_content' && job.phase === 'preparing_instance') {
 		return formatMessage(phaseMessages.downloading_content)
 	}
 	return isLocalRecoveryValidation(job)
@@ -881,7 +914,7 @@ function showProgress(job: InstallJobSnapshot) {
 }
 
 function jobPercent(job: InstallJobSnapshot) {
-	if (job.status === 'succeeded') return 100
+	if (isMainTrackComplete(job)) return 100
 	if (job.status === 'waiting_for_user') {
 		const total = totalRequiredFiles(job)
 		if (!total) return 0
@@ -903,9 +936,36 @@ function hasDeterminateProgress(job: InstallJobSnapshot) {
 }
 
 function parallelPercent(job: InstallJobSnapshot) {
+	if (isParallelTrackComplete(job)) return 100
 	const progress = effectiveParallelProgress(job)
 	if (!hasDeterminateInstallProgress(progress)) return 0
 	return Math.min(100, Math.max(0, (progress.current / progress.total) * 100))
+}
+
+function isFinished(job: InstallJobSnapshot) {
+	return job.status === 'succeeded'
+}
+
+function isMainTrackComplete(job: InstallJobSnapshot) {
+	if (isFinished(job)) return true
+	const progress = effectiveInstallProgress(job)
+	if (job.phase === 'downloading_content' && progress?.total === 0) return true
+	return hasDeterminateInstallProgress(progress) && progress.current >= progress.total
+}
+
+function isParallelTrackComplete(job: InstallJobSnapshot) {
+	if (isFinished(job)) return true
+	const progress = effectiveParallelProgress(job)
+	if (progress?.total === 0) return true
+	return hasDeterminateInstallProgress(progress) && progress.current >= progress.total
+}
+
+function progressColor(job: InstallJobSnapshot) {
+	return isMainTrackComplete(job) ? 'green' : 'brand'
+}
+
+function parallelProgressColor(job: InstallJobSnapshot) {
+	return isParallelTrackComplete(job) ? 'green' : 'brand'
 }
 
 function hasDeterminateParallelProgress(job: InstallJobSnapshot) {
@@ -913,6 +973,7 @@ function hasDeterminateParallelProgress(job: InstallJobSnapshot) {
 }
 
 function parallelProgressText(job: InstallJobSnapshot) {
+	if (isParallelTrackComplete(job)) return statusLabel('completed')
 	const progress = effectiveParallelProgress(job)
 	if (!hasDeterminateInstallProgress(progress)) {
 		return job.parallel ? phaseLabel(job.parallel.phase) : ''
@@ -921,6 +982,7 @@ function parallelProgressText(job: InstallJobSnapshot) {
 }
 
 function progressText(job: InstallJobSnapshot) {
+	if (isMainTrackComplete(job)) return statusLabel('completed')
 	const textSource = installProgressTextSource(job)
 	if (textSource.type === 'required_files') {
 		return `${completedRequiredFiles(job)} / ${totalRequiredFiles(job)}`
@@ -936,7 +998,15 @@ function progressText(job: InstallJobSnapshot) {
 		return formatMessage(messages.verifyingDownloadedFiles)
 	}
 	const finalStage = job.items.find(
-		(item) => item.status === 'writing' || item.status === 'verifying',
+		(item) =>
+			item.status === 'waiting_for_resource' ||
+			item.status === 'worker_started' ||
+			item.status === 'connecting' ||
+			item.status === 'writing' ||
+			item.status === 'verifying' ||
+			item.status === 'metadata' ||
+			item.status === 'waiting_for_database' ||
+			item.status === 'finalizing',
 	)
 	if (finalStage) return statusLabel(finalStage.status)
 	const progress = effectiveInstallProgress(job)
@@ -1184,14 +1254,12 @@ async function resolveMissing(job: InstallJobSnapshot) {
 				(item) =>
 					item.status === 'skipped' && item.manual_url && item.project_id && item.version_id,
 			)
-			.map(
-				(item): CurseForgeManualDownloadItem => ({
-					projectId: Number(item.project_id),
-					fileId: Number(item.version_id),
-					fileName: item.name,
-					websiteUrl: item.manual_url ?? undefined,
-				}),
-			)
+			.map((item): CurseForgeManualDownloadItem => ({
+				projectId: Number(item.project_id),
+				fileId: Number(item.version_id),
+				fileName: item.name,
+				websiteUrl: item.manual_url ?? undefined,
+			}))
 		const instanceId = job.instance_id
 		const hasGeneralMissingItems = job.items.some((item) => item.status === 'failed')
 		if (instanceId && (job.provider === 'curse_forge' || fallbackCurseForgeItems.length > 0)) {

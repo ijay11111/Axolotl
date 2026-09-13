@@ -6,8 +6,10 @@ mod create_direct_link_instance;
 pub use self::create_direct_link_instance::CreateDirectLinkInstance;
 pub(crate) use self::create_direct_link_instance::create_direct_link_instance;
 mod sync_direct_link_instances;
-pub use self::sync_direct_link_instances::DirectLinkSyncReport;
 pub(crate) use self::sync_direct_link_instances::sync_direct_link_instances;
+pub use self::sync_direct_link_instances::{
+    DirectLinkSyncReport, ExternalMinecraftRoot,
+};
 
 mod edit_instance;
 pub use self::edit_instance::{
@@ -52,6 +54,7 @@ pub(crate) use self::launch_context::*;
 
 mod apply_content_install;
 pub(crate) use self::apply_content_install::*;
+pub(crate) use apply_content_install::ProjectFileRecord;
 
 mod check_content_updates;
 

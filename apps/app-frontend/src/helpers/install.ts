@@ -98,11 +98,7 @@ export interface InstallParallelProgress {
 }
 
 export type InstallJavaStep =
-	| 'resolving'
-	| 'fetching_metadata'
-	| 'downloading'
-	| 'extracting'
-	| 'validating'
+	'resolving' | 'fetching_metadata' | 'downloading' | 'extracting' | 'validating'
 
 export interface InstallErrorView {
 	code: string
@@ -203,9 +199,15 @@ export interface InstallJobSnapshot {
 		version_id?: string | null
 		status:
 			| 'queued'
+			| 'worker_started'
+			| 'waiting_for_resource'
+			| 'connecting'
 			| 'downloading'
 			| 'verifying'
 			| 'writing'
+			| 'metadata'
+			| 'waiting_for_database'
+			| 'finalizing'
 			| 'waiting_for_user'
 			| 'completed'
 			| 'skipped'
@@ -278,7 +280,16 @@ export type DownloadRequestUpdate =
 			job_id: string
 			id: string
 			bytes: number
-			status: 'downloading' | 'writing' | 'verifying'
+			status:
+				| 'worker_started'
+				| 'waiting_for_resource'
+				| 'connecting'
+				| 'downloading'
+				| 'writing'
+				| 'verifying'
+				| 'metadata'
+				| 'waiting_for_database'
+				| 'finalizing'
 			speed_bytes_per_second?: number | null
 			eta_seconds?: number | null
 	  }
