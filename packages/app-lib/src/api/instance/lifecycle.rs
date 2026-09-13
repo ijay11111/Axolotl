@@ -7,7 +7,6 @@ use crate::state::{
 };
 use crate::util::{fetch::write_cached_icon, io};
 use std::path::Path;
-use std::path::PathBuf;
 
 #[tracing::instrument]
 #[allow(clippy::too_many_arguments)]
@@ -175,32 +174,11 @@ pub async fn edit_icon(
 
 #[tracing::instrument]
 pub async fn remove(instance_id: &str) -> crate::Result<()> {
-    remove_with_policy(instance_id, false).await
-}
-
-pub(crate) async fn remove_preserving_external_files(
-    instance_id: &str,
-) -> crate::Result<()> {
-    remove_with_policy(instance_id, true).await
-}
-
-async fn remove_with_policy(
-    instance_id: &str,
-    preserve_external_files: bool,
-) -> crate::Result<()> {
     let state = State::get().await?;
     let instance =
         instance_rows::get_instance_display_info(instance_id, &state.pool)
             .await?;
-    if preserve_external_files {
-        crate::state::remove_instance_preserving_external_files(
-            instance_id,
-            &state,
-        )
-        .await?;
-    } else {
-        crate::state::remove_instance(instance_id, &state).await?;
-    }
+    crate::state::remove_instance(instance_id, &state).await?;
 
     if let Some(instance) = instance {
         emit_instance(&instance.id, InstancePayloadType::Removed).await?;
