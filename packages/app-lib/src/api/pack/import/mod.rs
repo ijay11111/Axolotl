@@ -705,6 +705,7 @@ async fn import_instance_inner(
     launcher_type: ImportLauncherType,
 ) -> crate::Result<()> {
     let instance_id = job.instance_id.clone();
+    let preserve_external_files = job.symlink;
     tracing::debug!(
         "Importing instance from {} (symlink={}, launcher_type={launcher_type})",
         job.instance_folder,
@@ -725,7 +726,14 @@ async fn import_instance_inner(
         Ok(_) => {}
         Err(e) => {
             tracing::warn!("Import failed: {:?}", e);
-            let _ = crate::api::instance::remove(&instance_id).await;
+            if preserve_external_files {
+                let _ = crate::api::instance::remove_preserving_external_files(
+                    &instance_id,
+                )
+                .await;
+            } else {
+                let _ = crate::api::instance::remove(&instance_id).await;
+            }
             return Err(e);
         }
     }
